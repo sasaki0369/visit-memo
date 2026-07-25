@@ -464,6 +464,7 @@
      Firebase SDK（無料のRealtime Databaseでデータを共有します）
      ============================================================ -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
   // ▼▼▼ ここに自分のFirebaseプロジェクトの設定を貼り付けてください ▼▼▼
@@ -508,15 +509,14 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   "use strict";
 
   // ---------- Firebase init / localStorage fallback ----------
-  let db = null, firebaseReady = false;
+  let db = null, firebaseReady = false, firebaseConfigured = false;
   try{
     if(firebaseConfig.apiKey !== "YOUR_API_KEY"){
       firebase.initializeApp(firebaseConfig);
       db = firebase.database();
-      firebaseReady = true;
+      firebaseConfigured = true;
     }
   }catch(e){ console.error(e); }
-  if(!firebaseReady){ document.getElementById("connMsg").style.display = "block"; }
 
   const LOCAL_KEY = "houmonroku_visits_v1";
   const memoryStorage = {};
@@ -555,15 +555,6 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     }
   }
 
-  if(firebaseReady){
-    db.ref("visits").on("value", function(snap){
-      visits = snap.val() || {};
-      renderAll();
-    });
-  }else{
-    loadLocal();
-  }
-
   // ---------- 週報設定（reportConfig） ----------
   const REPORT_LOCAL_KEY = "houmonroku_reportConfig_v1";
   let reportConfig = JSON.parse(JSON.stringify(DEFAULT_REPORT_CONFIG));
@@ -597,14 +588,36 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     }
   }
 
-  if(firebaseReady){
+  // Firebaseの読み書き（visits / settings）は匿名認証が完了してから開始する
+  function attachFirebaseListeners(){
+    db.ref("visits").on("value", function(snap){
+      visits = snap.val() || {};
+      renderAll();
+    });
     db.ref("settings/reportConfig").on("value", function(snap){
       reportConfig = mergeReportConfig(snap.val());
       renderReportSettings();
       renderWeeklyReport();
     });
+  }
+
+  if(firebaseConfigured){
+    firebase.auth().onAuthStateChanged(function(user){
+      if(user && !firebaseReady){
+        firebaseReady = true;
+        attachFirebaseListeners();
+      }
+    });
+    firebase.auth().signInAnonymously().catch(function(err){
+      console.error(err);
+      document.getElementById("connMsg").style.display = "block";
+      try{ reportConfig = mergeReportConfig(JSON.parse(safeStorage.getItem(REPORT_LOCAL_KEY) || "null")); }catch(e){}
+      loadLocal();
+    });
   }else{
+    document.getElementById("connMsg").style.display = "block";
     try{ reportConfig = mergeReportConfig(JSON.parse(safeStorage.getItem(REPORT_LOCAL_KEY) || "null")); }catch(e){}
+    loadLocal();
   }
 
   // ---------- Prefecture / Category select ----------
