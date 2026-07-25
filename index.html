@@ -210,6 +210,7 @@
   .visit-item .actions button{ font-size:12px; padding:5px 10px; }
 
   .empty{ text-align:center; color:var(--ink-soft); font-size:13px; padding:24px 0; }
+  .import-note{ margin-top:10px; font-size:12.5px; color:var(--accent-deep); background:var(--accent-bg); border-radius:8px; padding:8px 10px; white-space:pre-wrap; }
 
   /* ---------- Aggregation ---------- */
   .stat-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
@@ -323,6 +324,18 @@
       </div>
       <div class="visit-list" id="visitList"></div>
       <div class="empty" id="listEmpty" style="display:none;">記録がありません</div>
+    </div>
+
+    <div class="card">
+      <h2>バックアップ（CSV）</h2>
+      <div class="btn-row">
+        <button class="btn secondary block" id="exportBtn">CSVエクスポート</button>
+      </div>
+      <div class="btn-row" style="margin-top:8px;">
+        <label class="btn secondary block" for="importFile" style="cursor:pointer;">CSVインポート</label>
+        <input type="file" id="importFile" accept=".csv,text/csv" style="display:none;">
+      </div>
+      <div class="import-note" id="importNote" style="display:none;"></div>
     </div>
   </section>
 
@@ -614,6 +627,135 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
     });
   }
+
+  // ---------- CSV Export / Import ----------
+  const CSV_HEADERS = ["id","訪問日","都道府県","拠点名","目的","メモ","登録日時"];
+
+  function csvField(val){
+    const s = (val===undefined || val===null) ? "" : String(val);
+    if(/[",\n\r]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+    return s;
+  }
+
+  function exportCsv(){
+    const arr = Object.entries(visits).map(function(e){ return Object.assign({id:e[0]}, e[1]); });
+    arr.sort(function(a,b){ return (a.date||"").localeCompare(b.date||""); });
+    const lines = [CSV_HEADERS.map(csvField).join(",")];
+    arr.forEach(function(v){
+      lines.push([
+        csvField(v.id), csvField(v.date), csvField(v.pref), csvField(v.place),
+        csvField(v.purpose), csvField(v.memo), csvField(v.createdAt||"")
+      ].join(","));
+    });
+    const csvBody = lines.join("\r\n");
+    const blob = new Blob(["\uFEFF"+csvBody], {type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const d = new Date();
+    const fname = "訪問録_"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0")+".csv";
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // シンプルなCSVパーサー（ダブルクォート・カンマ・改行を含むフィールドに対応）
+  function parseCsv(text){
+    const rows = [];
+    let row = [], field = "", inQuotes = false;
+    // 先頭のBOM除去
+    if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    for(let i=0;i<text.length;i++){
+      const c = text[i];
+      if(inQuotes){
+        if(c === '"'){
+          if(text[i+1] === '"'){ field += '"'; i++; }
+          else{ inQuotes = false; }
+        }else{
+          field += c;
+        }
+      }else{
+        if(c === '"'){ inQuotes = true; }
+        else if(c === ','){ row.push(field); field = ""; }
+        else if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ""; }
+        else if(c === '\r'){ /* skip, \n がペアで来る想定 */ }
+        else{ field += c; }
+      }
+    }
+    if(field.length>0 || row.length>0){ row.push(field); rows.push(row); }
+    return rows.filter(function(r){ return !(r.length===1 && r[0]==="") ; });
+  }
+
+  function importCsv(file){
+    const reader = new FileReader();
+    reader.onload = function(){
+      const rows = parseCsv(String(reader.result));
+      if(rows.length === 0){
+        showImportNote("CSVにデータがありませんでした。");
+        return;
+      }
+      const header = rows[0];
+      const idxId = header.indexOf("id");
+      const idxDate = header.indexOf("訪問日");
+      const idxPref = header.indexOf("都道府県");
+      const idxPlace = header.indexOf("拠点名");
+      const idxPurpose = header.indexOf("目的");
+      const idxMemo = header.indexOf("メモ");
+      const idxCreated = header.indexOf("登録日時");
+
+      if(idxDate===-1 || idxPlace===-1){
+        showImportNote("列見出しが認識できませんでした。エクスポートしたCSVの形式（id,訪問日,都道府県,拠点名,目的,メモ,登録日時）でご用意ください。");
+        return;
+      }
+
+      const updates = {};
+      let okCount = 0, skipCount = 0;
+      for(let i=1;i<rows.length;i++){
+        const r = rows[i];
+        if(!r || r.length===0) continue;
+        const date = (r[idxDate]||"").trim();
+        const place = (r[idxPlace]||"").trim();
+        if(!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !place){ skipCount++; continue; }
+        const pref = idxPref!==-1 ? (r[idxPref]||"").trim() : "";
+        const purpose = idxPurpose!==-1 ? (r[idxPurpose]||"").trim() : "";
+        const memo = idxMemo!==-1 ? (r[idxMemo]||"").trim() : "";
+        const createdRaw = idxCreated!==-1 ? (r[idxCreated]||"").trim() : "";
+        const createdAt = createdRaw && !isNaN(Number(createdRaw)) ? Number(createdRaw) : Date.now();
+        const id = (idxId!==-1 && r[idxId] && r[idxId].trim()) ? r[idxId].trim() : genId();
+        updates[id] = { date: date, pref: pref, place: place, purpose: purpose, memo: memo, createdAt: createdAt };
+        okCount++;
+      }
+
+      if(okCount === 0){
+        showImportNote("有効な行がありませんでした（訪問日はYYYY-MM-DD形式、拠点名は必須です）。");
+        return;
+      }
+
+      if(firebaseReady){
+        const dbUpdates = {};
+        Object.keys(updates).forEach(function(id){ dbUpdates["visits/"+id] = updates[id]; });
+        db.ref().update(dbUpdates);
+      }else{
+        Object.assign(visits, updates);
+        saveLocal();
+        renderAll();
+      }
+      showImportNote(okCount+"件を取り込みました"+(skipCount>0 ? "（"+skipCount+"件はスキップしました）" : "")+"。同じidの行は上書きされます。");
+    };
+    reader.readAsText(file, "UTF-8");
+  }
+
+  function showImportNote(msg){
+    const el = document.getElementById("importNote");
+    el.style.display = "block";
+    el.textContent = msg;
+  }
+
+  document.getElementById("exportBtn").addEventListener("click", exportCsv);
+  document.getElementById("importFile").addEventListener("change", function(e){
+    const file = e.target.files[0];
+    if(file) importCsv(file);
+    e.target.value = "";
+  });
 
   // ---------- Aggregation ----------
   function isoWeekInfo(dateStr){
