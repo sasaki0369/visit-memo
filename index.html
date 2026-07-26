@@ -245,6 +245,9 @@
   .bar{ height:8px; background:var(--accent); border-radius:4px; margin-top:4px; }
 
   select.year-select{ width:auto; display:inline-block; font-weight:700; color:var(--accent); }
+  .agg-note{ font-size:11.5px; color:var(--ink-soft); margin-bottom:10px; }
+  tr.cat-excluded{ color:var(--ink-soft); font-style:italic; }
+  tr.cat-excluded td{ border-top:1px dashed var(--line); }
 
   /* ---------- Map ---------- */
   .map-wrap{ overflow:hidden; border-radius:10px; background:#fff; border:1px solid var(--line); }
@@ -368,6 +371,7 @@
   <section class="tabpage" id="tab-agg">
     <div class="card">
       <h2>期間サマリー</h2>
+      <div class="agg-note">※初台への出社は合計から除外しています</div>
       <div class="field" style="margin-bottom:12px;">
         <label>対象年</label>
         <select class="year-select" id="aggYear"></select>
@@ -378,6 +382,12 @@
         <div class="stat-box"><div class="num" id="statPrefCount">0</div><div class="lbl">訪問都道府県数</div></div>
         <div class="stat-box"><div class="num" id="statAllTotal">0</div><div class="lbl">全期間累計</div></div>
       </div>
+    </div>
+
+    <div class="card">
+      <h2>分類別集計（<span id="cYearLbl"></span>年）</h2>
+      <table class="agg" id="tblCategory"><thead><tr><th>分類</th><th style="text-align:right;">訪問回数</th></tr></thead><tbody></tbody></table>
+      <div class="agg-note" style="margin-top:8px; margin-bottom:0;">※初台への出社は合計から除外しています</div>
     </div>
 
     <div class="card">
@@ -405,6 +415,7 @@
   <section class="tabpage" id="tab-map">
     <div class="card">
       <h2>都道府県別 訪問回数マップ</h2>
+      <div class="agg-note">※初台への出社は合計から除外しています</div>
       <div class="map-wrap" id="mapWrap"></div>
       <div class="legend">
         <span>0</span>
@@ -426,6 +437,14 @@
   <section class="tabpage" id="tab-report">
     <div class="card">
       <h2>週報</h2>
+      <div class="field">
+        <label>対象週</label>
+        <select id="reportWeekSel">
+          <option value="-2">先々週</option>
+          <option value="-1" selected>先週</option>
+          <option value="0">今週</option>
+        </select>
+      </div>
       <div class="report-range" id="reportRange"></div>
       <div class="btn-row" style="margin-top:10px;">
         <button class="btn block" id="copyReportBtn">コピーする</button>
@@ -610,14 +629,20 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     });
     firebase.auth().signInAnonymously().catch(function(err){
       console.error(err);
-      document.getElementById("connMsg").style.display = "block";
+      showConnMsg("Firebase認証に失敗しました（"+(err && err.code ? err.code : err)+"）。Firebase Console → Authentication → Sign-in method で「匿名」が有効になっているかご確認ください。このデバイスのみにデータが保存されています。");
       try{ reportConfig = mergeReportConfig(JSON.parse(safeStorage.getItem(REPORT_LOCAL_KEY) || "null")); }catch(e){}
       loadLocal();
     });
   }else{
-    document.getElementById("connMsg").style.display = "block";
+    showConnMsg("Firebase未設定のため、このデバイスのみにデータが保存されています（README参照）");
     try{ reportConfig = mergeReportConfig(JSON.parse(safeStorage.getItem(REPORT_LOCAL_KEY) || "null")); }catch(e){}
     loadLocal();
+  }
+
+  function showConnMsg(text){
+    const el = document.getElementById("connMsg");
+    el.textContent = text;
+    el.style.display = "block";
   }
 
   // ---------- Prefecture / Category select ----------
@@ -946,7 +971,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   aggYearSel.addEventListener("change", renderAggregation);
 
   function renderAggregation(){
-    const arr = Object.values(visits).filter(function(v){ return !!v.date; });
+    const arr = Object.values(visits).filter(function(v){ return !!v.date && v.category !== "初台"; });
     const years = Array.from(new Set(arr.map(function(v){ return v.date.slice(0,4); }))).sort();
 
     // year select population
@@ -980,9 +1005,29 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     // ---- selected year subset ----
     const yearArr = arr.filter(function(v){ return v.date.slice(0,4)===selYear; });
 
+    document.getElementById("cYearLbl").textContent = selYear;
     document.getElementById("qYearLbl").textContent = selYear;
     document.getElementById("mYearLbl").textContent = selYear;
     document.getElementById("wYearLbl").textContent = selYear;
+
+    // ---- 分類別集計 ----
+    const byCategory = {};
+    CATEGORIES.filter(function(c){ return c !== "初台"; }).forEach(function(c){ byCategory[c] = 0; });
+    yearArr.forEach(function(v){ if(byCategory.hasOwnProperty(v.category)) byCategory[v.category]++; });
+    const hqCount = Object.values(visits).filter(function(v){
+      return v.category==="初台" && v.date && v.date.slice(0,4)===selYear;
+    }).length;
+    const tblCategoryBody = document.querySelector("#tblCategory tbody");
+    tblCategoryBody.innerHTML = "";
+    Object.keys(byCategory).forEach(function(c){
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>"+escapeHtml(c)+"</td><td class='num'>"+byCategory[c]+"</td>";
+      tblCategoryBody.appendChild(tr);
+    });
+    const hqTr = document.createElement("tr");
+    hqTr.className = "cat-excluded";
+    hqTr.innerHTML = "<td>初台（参考）</td><td class='num'>"+hqCount+"</td>";
+    tblCategoryBody.appendChild(hqTr);
 
     // 四半期別
     const byQ = {1:0,2:0,3:0,4:0};
@@ -1049,13 +1094,19 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   }
 
   // ---------- 週報 ----------
-  function getLastWeekRange(){
+  const REPORT_WEEK_LABELS = { "-2":"先々週", "-1":"先週", "0":"今週" };
+
+  function getSundayOfWeek(d){
+    const s = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    s.setDate(s.getDate()-s.getDay()); // 日曜=0
+    return s;
+  }
+  function getWeekRange(offsetWeeks){
     const now = new Date();
-    const dayIdx = (now.getDay()+6)%7; // Mon=0..Sun=6
-    const thisMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate()-dayIdx);
-    const lastMonday = new Date(thisMonday); lastMonday.setDate(thisMonday.getDate()-7);
-    const lastSunday = new Date(thisMonday); lastSunday.setDate(thisMonday.getDate()-1);
-    return { start: fmtDate(lastMonday), end: fmtDate(lastSunday) };
+    const thisSunday = getSundayOfWeek(now);
+    const start = new Date(thisSunday); start.setDate(thisSunday.getDate()+7*offsetWeeks);
+    const end = new Date(start); end.setDate(start.getDate()+6);
+    return { start: fmtDate(start), end: fmtDate(end) };
   }
   function fmtDate(d){
     return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
@@ -1067,14 +1118,19 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     return s + "　".repeat(Math.max(0, 4-len));
   }
 
+  const reportWeekSel = document.getElementById("reportWeekSel");
+  reportWeekSel.addEventListener("change", renderWeeklyReport);
+
   function buildWeeklyReport(){
-    const range = getLastWeekRange();
-    const arr = Object.values(visits).filter(function(v){ return !!v.date && v.category; });
+    const offset = parseInt(reportWeekSel.value, 10) || 0;
+    const range = getWeekRange(offset);
+    const reportCategories = CATEGORIES.filter(function(c){ return c !== "初台"; });
+    const arr = Object.values(visits).filter(function(v){ return !!v.date && v.category && v.category !== "初台"; });
 
     const weekArr = arr.filter(function(v){ return v.date>=range.start && v.date<=range.end; });
     const cumArr = arr.filter(function(v){ return v.date>=reportConfig.startDate && v.date<=range.end; });
 
-    const lines = CATEGORIES.map(function(cat){
+    const lines = reportCategories.map(function(cat){
       const weekCount = weekArr.filter(function(v){ return v.category===cat; }).length;
       const cumCount = cumArr.filter(function(v){ return v.category===cat; }).length;
       const baseline = (reportConfig.baseline[cat]||[0,0,0,0]).map(function(n){ return Number(n).toFixed(1); }).join(",");
@@ -1111,7 +1167,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
     const [sy, sm] = reportConfig.startDate.split("-");
     const startLabel = sy+"."+parseInt(sm,10);
-    const header = "■前週の行動履歴（[]内は"+startLabel+"からの累計、【】内は"+reportConfig.baselineYear+" 1Q,2Q,3Q,4Qの各平均）";
+    const periodLabel = REPORT_WEEK_LABELS[String(offset)] || "対象週";
+    const header = "■"+periodLabel+"の行動履歴（[]内は"+startLabel+"からの累計、【】内は"+reportConfig.baselineYear+" 1Q,2Q,3Q,4Qの各平均）";
 
     return { text: header+"\n"+lines.join("\n"), range: range };
   }
@@ -1119,7 +1176,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   function renderWeeklyReport(){
     const result = buildWeeklyReport();
     document.getElementById("reportText").value = result.text;
-    document.getElementById("reportRange").textContent = "対象週："+result.range.start+" 〜 "+result.range.end;
+    document.getElementById("reportRange").textContent = "対象期間（日〜土）："+result.range.start+" 〜 "+result.range.end;
   }
 
   document.getElementById("copyReportBtn").addEventListener("click", function(){
@@ -1161,7 +1218,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
     const tbody = document.querySelector("#cfgTable tbody");
     tbody.innerHTML = "";
-    CATEGORIES.forEach(function(cat){
+    CATEGORIES.filter(function(cat){ return cat !== "初台"; }).forEach(function(cat){
       const tr = document.createElement("tr");
       const baseline = reportConfig.baseline[cat]||[0,0,0,0];
       const mode = reportConfig.breakdownMode[cat]||"none";
@@ -1209,7 +1266,10 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   function computePrefCounts(){
     const counts = {};
     PREF_LIST.forEach(function(p){ counts[p]=0; });
-    Object.values(visits).forEach(function(v){ if(v.pref && counts.hasOwnProperty(v.pref)) counts[v.pref]++; });
+    Object.values(visits).forEach(function(v){
+      if(v.category==="初台") return;
+      if(v.pref && counts.hasOwnProperty(v.pref)) counts[v.pref]++;
+    });
     return counts;
   }
 
