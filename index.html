@@ -248,6 +248,12 @@
   .agg-note{ font-size:11.5px; color:var(--ink-soft); margin-bottom:10px; }
   tr.cat-excluded{ color:var(--ink-soft); font-style:italic; }
   tr.cat-excluded td{ border-top:1px dashed var(--line); }
+  .table-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  table.cross-tab{ white-space:nowrap; }
+  table.cross-tab th, table.cross-tab td{ padding:6px 8px; text-align:right; }
+  table.cross-tab th:first-child, table.cross-tab td:first-child{ text-align:left; position:sticky; left:0; background:#FFFEFA; }
+  table.cross-tab th{ font-size:10.5px; }
+  table.cross-tab td.total, table.cross-tab th.total{ font-weight:700; color:var(--accent-deep); border-left:1px solid var(--line); }
 
   /* ---------- Map ---------- */
   .map-wrap{ overflow:hidden; border-radius:10px; background:#fff; border:1px solid var(--line); }
@@ -391,23 +397,23 @@
     </div>
 
     <div class="card">
-      <h2>年別集計</h2>
-      <table class="agg" id="tblYear"><thead><tr><th>年</th><th style="text-align:right;">訪問回数</th></tr></thead><tbody></tbody></table>
+      <h2>年別集計（分類別）</h2>
+      <div class="table-scroll"><table class="agg cross-tab" id="tblYear"><thead></thead><tbody></tbody></table></div>
     </div>
 
     <div class="card">
-      <h2>四半期別集計（<span id="qYearLbl"></span>年）</h2>
-      <table class="agg" id="tblQuarter"><thead><tr><th>四半期</th><th style="text-align:right;">訪問回数</th></tr></thead><tbody></tbody></table>
+      <h2>四半期別集計（<span id="qYearLbl"></span>年・分類別）</h2>
+      <div class="table-scroll"><table class="agg cross-tab" id="tblQuarter"><thead></thead><tbody></tbody></table></div>
     </div>
 
     <div class="card">
-      <h2>月別集計（<span id="mYearLbl"></span>年）</h2>
-      <table class="agg" id="tblMonth"><thead><tr><th>月</th><th style="text-align:right;">訪問回数</th><th style="width:40%;"></th></tr></thead><tbody></tbody></table>
+      <h2>月別集計（<span id="mYearLbl"></span>年・分類別）</h2>
+      <div class="table-scroll"><table class="agg cross-tab" id="tblMonth"><thead></thead><tbody></tbody></table></div>
     </div>
 
     <div class="card">
-      <h2>週別集計（<span id="wYearLbl"></span>年）</h2>
-      <table class="agg" id="tblWeek"><thead><tr><th>週</th><th style="text-align:right;">訪問回数</th></tr></thead><tbody></tbody></table>
+      <h2>週別集計（<span id="wYearLbl"></span>年・分類別）</h2>
+      <div class="table-scroll"><table class="agg cross-tab" id="tblWeek"><thead></thead><tbody></tbody></table></div>
     </div>
   </section>
 
@@ -502,6 +508,7 @@
 <script>
 const PREF_LIST = ["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
 const CATEGORIES = ["初台","事業部","支店","集約組織","協力会社","Ｇ会社","社外","イベント","現場"];
+const CATEGORIES_NO_HQ = CATEGORIES.filter(function(c){ return c !== "初台"; });
 const DEFAULT_REPORT_CONFIG = {
   startDate: "2026-04-01",
   baselineYear: "2025",
@@ -970,6 +977,38 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   const aggYearSel = document.getElementById("aggYear");
   aggYearSel.addEventListener("change", renderAggregation);
 
+  function renderCrossTable(tableId, periods){
+    const table = document.getElementById(tableId);
+    const thead = table.querySelector("thead");
+    const tbody = table.querySelector("tbody");
+    thead.innerHTML = "";
+    tbody.innerHTML = "";
+
+    const headTr = document.createElement("tr");
+    headTr.innerHTML = "<th></th>" +
+      CATEGORIES_NO_HQ.map(function(c){ return "<th>"+escapeHtml(c)+"</th>"; }).join("") +
+      "<th class='total'>合計</th>";
+    thead.appendChild(headTr);
+
+    if(periods.length===0){
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td colspan='"+(CATEGORIES_NO_HQ.length+2)+"' style='text-align:center;color:var(--ink-soft);'>記録がありません</td>";
+      tbody.appendChild(tr);
+      return;
+    }
+
+    periods.forEach(function(p){
+      const counts = {};
+      CATEGORIES_NO_HQ.forEach(function(c){ counts[c]=0; });
+      p.items.forEach(function(v){ if(counts.hasOwnProperty(v.category)) counts[v.category]++; });
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>"+escapeHtml(p.label)+"</td>" +
+        CATEGORIES_NO_HQ.map(function(c){ return "<td>"+counts[c]+"</td>"; }).join("") +
+        "<td class='total'>"+p.items.length+"</td>";
+      tbody.appendChild(tr);
+    });
+  }
+
   function renderAggregation(){
     const arr = Object.values(visits).filter(function(v){ return !!v.date && v.category !== "初台"; });
     const years = Array.from(new Set(arr.map(function(v){ return v.date.slice(0,4); }))).sort();
@@ -991,16 +1030,11 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     }
     const selYear = aggYearSel.value || (years.length? years[years.length-1] : nowYear);
 
-    // ---- 年別集計 ----
-    const byYear = {};
-    arr.forEach(function(v){ const y=v.date.slice(0,4); byYear[y]=(byYear[y]||0)+1; });
-    const tblYearBody = document.querySelector("#tblYear tbody");
-    tblYearBody.innerHTML = "";
-    Object.keys(byYear).sort().reverse().forEach(function(y){
-      const tr = document.createElement("tr");
-      tr.innerHTML = "<td>"+y+"年</td><td class='num'>"+byYear[y]+"</td>";
-      tblYearBody.appendChild(tr);
+    // ---- 年別集計（分類別クロス集計） ----
+    const yearGroups = years.slice().reverse().map(function(y){
+      return { label: y+"年", items: arr.filter(function(v){ return v.date.slice(0,4)===y; }) };
     });
+    renderCrossTable("tblYear", yearGroups);
 
     // ---- selected year subset ----
     const yearArr = arr.filter(function(v){ return v.date.slice(0,4)===selYear; });
@@ -1012,7 +1046,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
     // ---- 分類別集計 ----
     const byCategory = {};
-    CATEGORIES.filter(function(c){ return c !== "初台"; }).forEach(function(c){ byCategory[c] = 0; });
+    CATEGORIES_NO_HQ.forEach(function(c){ byCategory[c] = 0; });
     yearArr.forEach(function(v){ if(byCategory.hasOwnProperty(v.category)) byCategory[v.category]++; });
     const hqCount = Object.values(visits).filter(function(v){
       return v.category==="初台" && v.date && v.date.slice(0,4)===selYear;
@@ -1029,49 +1063,44 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     hqTr.innerHTML = "<td>初台（参考）</td><td class='num'>"+hqCount+"</td>";
     tblCategoryBody.appendChild(hqTr);
 
-    // 四半期別
-    const byQ = {1:0,2:0,3:0,4:0};
-    yearArr.forEach(function(v){
-      const m = parseInt(v.date.slice(5,7),10);
-      const q = Math.floor((m-1)/3)+1;
-      byQ[q]++;
+    // ---- 四半期別（分類別クロス集計） ----
+    const quarterGroups = [1,2,3,4].map(function(q){
+      return {
+        label: "第"+q+"四半期",
+        items: yearArr.filter(function(v){
+          const m = parseInt(v.date.slice(5,7),10);
+          return Math.floor((m-1)/3)+1 === q;
+        })
+      };
     });
-    const tblQBody = document.querySelector("#tblQuarter tbody");
-    tblQBody.innerHTML = "";
-    [1,2,3,4].forEach(function(q){
-      const tr = document.createElement("tr");
-      tr.innerHTML = "<td>第"+q+"四半期</td><td class='num'>"+byQ[q]+"</td>";
-      tblQBody.appendChild(tr);
-    });
+    renderCrossTable("tblQuarter", quarterGroups);
 
-    // 月別
-    const byM = {};
-    for(let m=1;m<=12;m++) byM[m]=0;
-    yearArr.forEach(function(v){ const m=parseInt(v.date.slice(5,7),10); byM[m]++; });
-    const maxM = Math.max(1, Math.max.apply(null, Object.values(byM)));
-    const tblMBody = document.querySelector("#tblMonth tbody");
-    tblMBody.innerHTML = "";
+    // ---- 月別（分類別クロス集計） ----
+    const monthGroups = [];
     for(let m=1;m<=12;m++){
-      const tr = document.createElement("tr");
-      const barW = Math.round((byM[m]/maxM)*100);
-      tr.innerHTML = "<td>"+m+"月</td><td class='num'>"+byM[m]+"</td><td class='bar-cell'><div class='bar' style='width:"+barW+"%'></div></td>";
-      tblMBody.appendChild(tr);
+      monthGroups.push({
+        label: m+"月",
+        items: yearArr.filter(function(v){ return parseInt(v.date.slice(5,7),10)===m; })
+      });
     }
+    renderCrossTable("tblMonth", monthGroups);
 
-    // 週別
-    const byW = {};
+    // ---- 週別（分類別クロス集計） ----
+    const weekKeySet = new Set();
     yearArr.forEach(function(v){
       const info = isoWeekInfo(v.date);
-      const key = info.year+"-W"+String(info.week).padStart(2,"0");
-      byW[key] = (byW[key]||0)+1;
+      weekKeySet.add(info.year+"-W"+String(info.week).padStart(2,"0"));
     });
-    const tblWBody = document.querySelector("#tblWeek tbody");
-    tblWBody.innerHTML = "";
-    Object.keys(byW).sort().reverse().forEach(function(k){
-      const tr = document.createElement("tr");
-      tr.innerHTML = "<td>"+k+"</td><td class='num'>"+byW[k]+"</td>";
-      tblWBody.appendChild(tr);
+    const weekGroups = Array.from(weekKeySet).sort().reverse().map(function(k){
+      return {
+        label: k,
+        items: yearArr.filter(function(v){
+          const info = isoWeekInfo(v.date);
+          return (info.year+"-W"+String(info.week).padStart(2,"0")) === k;
+        })
+      };
     });
+    renderCrossTable("tblWeek", weekGroups);
 
     // ---- サマリー統計 ----
     const yearTotal = yearArr.length;
