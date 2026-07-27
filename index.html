@@ -375,6 +375,17 @@
       </div>
       <div class="import-note" id="importNote" style="display:none;"></div>
     </div>
+
+    <div class="card">
+      <h2>データ管理</h2>
+      <div class="btn-row">
+        <button class="btn secondary block" id="dedupBtn">重複レコードを整理する</button>
+      </div>
+      <div class="import-note" id="dedupNote" style="display:none;"></div>
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn danger block" id="deleteAllBtn">全レコードを削除</button>
+      </div>
+    </div>
   </section>
 
   <!-- ============ 集計タブ ============ -->
@@ -715,7 +726,18 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       alert("訪問日と拠点名は必須です");
       return;
     }
-    const id = editingId || genId();
+
+    // 日付・分類・拠点が一致する既存レコードがあれば、新規作成せずそちらへ統合する
+    let id = editingId;
+    if(!id){
+      const dup = Object.entries(visits).find(function(e){
+        const v = e[1];
+        return v.date===date && v.category===category && v.place===place;
+      });
+      if(dup) id = dup[0];
+    }
+    if(!id) id = genId();
+
     const data = { date: date, pref: pref, category: category, place: place, purpose: purpose, memo: memo, createdAt: (visits[id] && visits[id].createdAt) || Date.now() };
     upsertVisit(id, data);
     resetForm();
@@ -957,6 +979,102 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     const file = e.target.files[0];
     if(file) importCsv(file);
     e.target.value = "";
+  });
+
+  // ---------- データ管理：重複整理・全削除 ----------
+  function showDedupNote(msg){
+    const el = document.getElementById("dedupNote");
+    el.style.display = "block";
+    el.textContent = msg;
+  }
+
+  document.getElementById("dedupBtn").addEventListener("click", function(){
+    const entries = Object.entries(visits);
+    const groups = {};
+    entries.forEach(function(e){
+      const id = e[0], v = e[1];
+      if(!v || !v.date) return;
+      const key = v.date+"|"+(v.category||"")+"|"+(v.place||"");
+      if(!groups[key]) groups[key] = [];
+      groups[key].push({ id: id, v: v });
+    });
+
+    const toDelete = [];
+    const toUpdate = {};
+    let mergedGroupCount = 0;
+
+    Object.values(groups).forEach(function(group){
+      if(group.length<=1) return;
+      mergedGroupCount++;
+      // 最も古い createdAt のレコードを残す
+      group.sort(function(a,b){ return (a.v.createdAt||0)-(b.v.createdAt||0); });
+      const keep = group[0];
+      const rest = group.slice(1);
+
+      // 目的・メモは重複を除いて結合し、情報を失わないようにする
+      const purposes = [keep.v.purpose].concat(rest.map(function(r){ return r.v.purpose; }))
+        .filter(function(s){ return s && s.trim(); });
+      const memos = [keep.v.memo].concat(rest.map(function(r){ return r.v.memo; }))
+        .filter(function(s){ return s && s.trim(); });
+      const uniq = function(arr){ return arr.filter(function(s,i){ return arr.indexOf(s)===i; }); };
+
+      const merged = Object.assign({}, keep.v, {
+        purpose: uniq(purposes).join("／"),
+        memo: uniq(memos).join("\n---\n")
+      });
+      toUpdate[keep.id] = merged;
+      rest.forEach(function(r){ toDelete.push(r.id); });
+    });
+
+    if(mergedGroupCount===0){
+      showDedupNote("重複レコードは見つかりませんでした。");
+      return;
+    }
+
+    if(!confirm(mergedGroupCount+"件のグループで重複が見つかりました。統合してよろしいですか？（"+toDelete.length+"件を削除し、1件にまとめます）")){
+      return;
+    }
+
+    if(firebaseReady){
+      const updates = {};
+      Object.keys(toUpdate).forEach(function(id){ updates["visits/"+id] = toUpdate[id]; });
+      toDelete.forEach(function(id){ updates["visits/"+id] = null; });
+      db.ref().update(updates);
+    }else{
+      Object.keys(toUpdate).forEach(function(id){ visits[id] = toUpdate[id]; });
+      toDelete.forEach(function(id){ delete visits[id]; });
+      saveLocal();
+      renderAll();
+    }
+    showDedupNote(mergedGroupCount+"件のグループを統合し、"+toDelete.length+"件の重複レコードを削除しました。");
+  });
+
+  document.getElementById("deleteAllBtn").addEventListener("click", function(){
+    const count = Object.keys(visits).length;
+    if(count===0){
+      alert("削除するレコードがありません。");
+      return;
+    }
+    if(!confirm("全"+count+"件の訪問記録を削除します。この操作は元に戻せません。続行しますか？")){
+      return;
+    }
+    const pw = prompt("削除を実行するにはパスワードを入力してください：");
+    if(pw===null) return;
+    if(pw !== "visit"){
+      alert("パスワードが違います。削除は行われませんでした。");
+      return;
+    }
+    if(!confirm("本当によろしいですか？全"+count+"件のデータが完全に削除されます。")){
+      return;
+    }
+    if(firebaseReady){
+      db.ref("visits").set(null);
+    }else{
+      visits = {};
+      saveLocal();
+      renderAll();
+    }
+    alert("全レコードを削除しました。");
   });
 
   // ---------- Aggregation ----------
