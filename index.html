@@ -254,6 +254,10 @@
   table.cross-tab th:first-child, table.cross-tab td:first-child{ text-align:left; position:sticky; left:0; background:#FFFEFA; }
   table.cross-tab th{ font-size:10.5px; }
   table.cross-tab td.total, table.cross-tab th.total{ font-weight:700; color:var(--accent-deep); border-left:1px solid var(--line); }
+  tr.total-row{ font-weight:700; background:var(--paper-deep); }
+  tr.total-row td{ border-top:2px solid var(--ink); }
+  tr.total-row td:first-child{ background:var(--paper-deep); }
+  tr.cat-excluded td:first-child{ background:#FFFEFA; }
 
   /* ---------- Map ---------- */
   .map-wrap{ overflow:hidden; border-radius:10px; background:#fff; border:1px solid var(--line); }
@@ -379,11 +383,11 @@
       <h2>期間サマリー</h2>
       <div class="agg-note">※初台への出社は合計から除外しています</div>
       <div class="field" style="margin-bottom:12px;">
-        <label>対象年</label>
+        <label>対象年度</label>
         <select class="year-select" id="aggYear"></select>
       </div>
       <div class="stat-grid">
-        <div class="stat-box"><div class="num" id="statYearTotal">0</div><div class="lbl">年間訪問回数</div></div>
+        <div class="stat-box"><div class="num" id="statYearTotal">0</div><div class="lbl">年度間訪問回数</div></div>
         <div class="stat-box"><div class="num" id="statWeekAvg">0</div><div class="lbl">週平均訪問回数</div></div>
         <div class="stat-box"><div class="num" id="statPrefCount">0</div><div class="lbl">訪問都道府県数</div></div>
         <div class="stat-box"><div class="num" id="statAllTotal">0</div><div class="lbl">全期間累計</div></div>
@@ -391,28 +395,18 @@
     </div>
 
     <div class="card">
-      <h2>分類別集計（<span id="cYearLbl"></span>年）</h2>
-      <table class="agg" id="tblCategory"><thead><tr><th>分類</th><th style="text-align:right;">訪問回数</th></tr></thead><tbody></tbody></table>
+      <h2>分類別集計（<span id="cYearLbl"></span>年度・月別）</h2>
+      <div class="table-scroll"><table class="agg cross-tab" id="tblCategory"><thead></thead><tbody></tbody></table></div>
       <div class="agg-note" style="margin-top:8px; margin-bottom:0;">※初台への出社は合計から除外しています</div>
     </div>
 
     <div class="card">
-      <h2>年別集計（分類別）</h2>
-      <div class="table-scroll"><table class="agg cross-tab" id="tblYear"><thead></thead><tbody></tbody></table></div>
-    </div>
-
-    <div class="card">
-      <h2>四半期別集計（<span id="qYearLbl"></span>年・分類別）</h2>
+      <h2>四半期別集計（<span id="qYearLbl"></span>年度・分類別）</h2>
       <div class="table-scroll"><table class="agg cross-tab" id="tblQuarter"><thead></thead><tbody></tbody></table></div>
     </div>
 
     <div class="card">
-      <h2>月別集計（<span id="mYearLbl"></span>年・分類別）</h2>
-      <div class="table-scroll"><table class="agg cross-tab" id="tblMonth"><thead></thead><tbody></tbody></table></div>
-    </div>
-
-    <div class="card">
-      <h2>週別集計（<span id="wYearLbl"></span>年・分類別）</h2>
+      <h2>週別集計（<span id="wYearLbl"></span>年度・分類別）</h2>
       <div class="table-scroll"><table class="agg cross-tab" id="tblWeek"><thead></thead><tbody></tbody></table></div>
     </div>
   </section>
@@ -966,21 +960,30 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   });
 
   // ---------- Aggregation ----------
-  function isoWeekInfo(dateStr){
-    // dateStr: 'YYYY-MM-DD' -> {year, week} using ISO 8601 week rule
-    const d = new Date(dateStr+"T00:00:00");
-    const target = new Date(d.valueOf());
-    const dayNr = (d.getDay()+6)%7; // Mon=0..Sun=6
-    target.setDate(target.getDate()-dayNr+3); // Thursday of this week
-    const firstThursday = new Date(target.getFullYear(),0,4);
-    const firstDayNr = (firstThursday.getDay()+6)%7;
-    firstThursday.setDate(firstThursday.getDate()-firstDayNr+3);
-    const week = 1 + Math.round((target-firstThursday)/(7*24*3600*1000));
-    return { year: target.getFullYear(), week: week };
+  function getFiscalYear(dateStr){
+    const y = parseInt(dateStr.slice(0,4),10);
+    const m = parseInt(dateStr.slice(5,7),10);
+    return m>=4 ? y : y-1;
   }
-  function isoWeeksInYear(y){
-    // ISO weeks in year = week number of Dec 28
-    return isoWeekInfo(y+"-12-28").week;
+  function fiscalYearRange(fy){
+    return { start: fy+"-04-01", end: (fy+1)+"-03-31" };
+  }
+  function fiscalMonthIndex(dateStr){
+    // 0=4月, 1=5月, ... 11=3月
+    const m = parseInt(dateStr.slice(5,7),10);
+    return m>=4 ? m-4 : m+8;
+  }
+  const FISCAL_MONTH_LABELS = ["4月","5月","6月","7月","8月","9月","10月","11月","12月","1月","2月","3月"];
+
+  function fiscalWeekNumber(dateStr, fy){
+    const d = new Date(dateStr+"T00:00:00");
+    const apr1 = new Date(fy, 3, 1);
+    const apr1Sunday = getSundayOfWeek(apr1);
+    const dSunday = getSundayOfWeek(d);
+    return Math.round((dSunday - apr1Sunday)/(7*24*3600*1000)) + 1;
+  }
+  function totalFiscalWeeks(fy){
+    return fiscalWeekNumber((fy+1)+"-03-31", fy);
   }
 
   const aggYearSel = document.getElementById("aggYear");
@@ -1006,120 +1009,149 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       return;
     }
 
+    const colTotals = {};
+    CATEGORIES_NO_HQ.forEach(function(c){ colTotals[c]=0; });
+    let grandTotal = 0;
+
     periods.forEach(function(p){
       const counts = {};
       CATEGORIES_NO_HQ.forEach(function(c){ counts[c]=0; });
       p.items.forEach(function(v){ if(counts.hasOwnProperty(v.category)) counts[v.category]++; });
+      CATEGORIES_NO_HQ.forEach(function(c){ colTotals[c]+=counts[c]; });
+      grandTotal += p.items.length;
       const tr = document.createElement("tr");
       tr.innerHTML = "<td>"+escapeHtml(p.label)+"</td>" +
         CATEGORIES_NO_HQ.map(function(c){ return "<td>"+counts[c]+"</td>"; }).join("") +
         "<td class='total'>"+p.items.length+"</td>";
       tbody.appendChild(tr);
     });
+
+    const totalTr = document.createElement("tr");
+    totalTr.className = "total-row";
+    totalTr.innerHTML = "<td>合計</td>" +
+      CATEGORIES_NO_HQ.map(function(c){ return "<td>"+colTotals[c]+"</td>"; }).join("") +
+      "<td class='total'>"+grandTotal+"</td>";
+    tbody.appendChild(totalTr);
+  }
+
+  function renderCategoryMonthTable(range){
+    const table = document.getElementById("tblCategory");
+    const thead = table.querySelector("thead");
+    const tbody = table.querySelector("tbody");
+    thead.innerHTML = "";
+    tbody.innerHTML = "";
+
+    const headTr = document.createElement("tr");
+    headTr.innerHTML = "<th></th>" +
+      FISCAL_MONTH_LABELS.map(function(m){ return "<th>"+m+"</th>"; }).join("") +
+      "<th class='total'>合計</th>";
+    thead.appendChild(headTr);
+
+    // 初台（参考）行：先頭に表示し、合計からは除外
+    const hqCounts = new Array(12).fill(0);
+    Object.values(visits).forEach(function(v){
+      if(v.category==="初台" && v.date && v.date>=range.start && v.date<=range.end){
+        hqCounts[fiscalMonthIndex(v.date)]++;
+      }
+    });
+    const hqTotal = hqCounts.reduce(function(a,b){ return a+b; },0);
+    const hqTr = document.createElement("tr");
+    hqTr.className = "cat-excluded";
+    hqTr.innerHTML = "<td>初台（参考）</td>" +
+      hqCounts.map(function(n){ return "<td>"+n+"</td>"; }).join("") +
+      "<td class='total'>"+hqTotal+"</td>";
+    tbody.appendChild(hqTr);
+
+    // 通常分類（初台除く）
+    const yearArrNoHq = Object.values(visits).filter(function(v){
+      return v.date && v.date>=range.start && v.date<=range.end && v.category && v.category !== "初台";
+    });
+    const colTotals = new Array(12).fill(0);
+    let grandTotal = 0;
+    CATEGORIES_NO_HQ.forEach(function(cat){
+      const counts = new Array(12).fill(0);
+      yearArrNoHq.forEach(function(v){ if(v.category===cat) counts[fiscalMonthIndex(v.date)]++; });
+      const rowTotal = counts.reduce(function(a,b){ return a+b; },0);
+      counts.forEach(function(n,i){ colTotals[i]+=n; });
+      grandTotal += rowTotal;
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>"+escapeHtml(cat)+"</td>" +
+        counts.map(function(n){ return "<td>"+n+"</td>"; }).join("") +
+        "<td class='total'>"+rowTotal+"</td>";
+      tbody.appendChild(tr);
+    });
+
+    const totalTr = document.createElement("tr");
+    totalTr.className = "total-row";
+    totalTr.innerHTML = "<td>合計</td>" +
+      colTotals.map(function(n){ return "<td>"+n+"</td>"; }).join("") +
+      "<td class='total'>"+grandTotal+"</td>";
+    tbody.appendChild(totalTr);
   }
 
   function renderAggregation(){
-    const arr = Object.values(visits).filter(function(v){ return !!v.date && v.category !== "初台"; });
-    const years = Array.from(new Set(arr.map(function(v){ return v.date.slice(0,4); }))).sort();
+    const arr = Object.values(visits).filter(function(v){ return !!v.date && v.category && v.category !== "初台"; });
 
-    // year select population
+    const fySet = new Set();
+    Object.values(visits).forEach(function(v){ if(v.date) fySet.add(getFiscalYear(v.date)); });
+    const fiscalYears = Array.from(fySet).sort(function(a,b){ return a-b; });
+
+    // 年度選択の設定
     const curSel = aggYearSel.value;
     aggYearSel.innerHTML = "";
-    years.slice().reverse().forEach(function(y){
+    fiscalYears.slice().reverse().forEach(function(fy){
       const o = document.createElement("option");
-      o.value = y; o.textContent = y+"年";
+      o.value = String(fy); o.textContent = fy+"年度";
       aggYearSel.appendChild(o);
     });
-    const nowYear = String(new Date().getFullYear());
-    if(years.length===0){
-      const o = document.createElement("option"); o.value=nowYear; o.textContent=nowYear+"年";
+    const now = new Date();
+    const nowFy = getFiscalYear(todayStr());
+    if(fiscalYears.length===0){
+      const o = document.createElement("option"); o.value=String(nowFy); o.textContent=nowFy+"年度";
       aggYearSel.appendChild(o);
-    } else if(curSel && years.includes(curSel)){
+    } else if(curSel && fiscalYears.map(String).includes(curSel)){
       aggYearSel.value = curSel;
     }
-    const selYear = aggYearSel.value || (years.length? years[years.length-1] : nowYear);
+    const selFy = parseInt(aggYearSel.value, 10) || nowFy;
+    const range = fiscalYearRange(selFy);
 
-    // ---- 年別集計（分類別クロス集計） ----
-    const yearGroups = years.slice().reverse().map(function(y){
-      return { label: y+"年", items: arr.filter(function(v){ return v.date.slice(0,4)===y; }) };
-    });
-    renderCrossTable("tblYear", yearGroups);
+    const yearArr = arr.filter(function(v){ return v.date>=range.start && v.date<=range.end; });
 
-    // ---- selected year subset ----
-    const yearArr = arr.filter(function(v){ return v.date.slice(0,4)===selYear; });
+    document.getElementById("cYearLbl").textContent = selFy;
+    document.getElementById("qYearLbl").textContent = selFy;
+    document.getElementById("wYearLbl").textContent = selFy;
 
-    document.getElementById("cYearLbl").textContent = selYear;
-    document.getElementById("qYearLbl").textContent = selYear;
-    document.getElementById("mYearLbl").textContent = selYear;
-    document.getElementById("wYearLbl").textContent = selYear;
+    // ---- 分類別集計（月別クロス集計、初台は参考行） ----
+    renderCategoryMonthTable(range);
 
-    // ---- 分類別集計 ----
-    const byCategory = {};
-    CATEGORIES_NO_HQ.forEach(function(c){ byCategory[c] = 0; });
-    yearArr.forEach(function(v){ if(byCategory.hasOwnProperty(v.category)) byCategory[v.category]++; });
-    const hqCount = Object.values(visits).filter(function(v){
-      return v.category==="初台" && v.date && v.date.slice(0,4)===selYear;
-    }).length;
-    const tblCategoryBody = document.querySelector("#tblCategory tbody");
-    tblCategoryBody.innerHTML = "";
-    Object.keys(byCategory).forEach(function(c){
-      const tr = document.createElement("tr");
-      tr.innerHTML = "<td>"+escapeHtml(c)+"</td><td class='num'>"+byCategory[c]+"</td>";
-      tblCategoryBody.appendChild(tr);
-    });
-    const hqTr = document.createElement("tr");
-    hqTr.className = "cat-excluded";
-    hqTr.innerHTML = "<td>初台（参考）</td><td class='num'>"+hqCount+"</td>";
-    tblCategoryBody.appendChild(hqTr);
-
-    // ---- 四半期別（分類別クロス集計） ----
+    // ---- 四半期別（年度基準：Q1=4-6月,Q2=7-9月,Q3=10-12月,Q4=1-3月） ----
     const quarterGroups = [1,2,3,4].map(function(q){
       return {
         label: "第"+q+"四半期",
-        items: yearArr.filter(function(v){
-          const m = parseInt(v.date.slice(5,7),10);
-          return Math.floor((m-1)/3)+1 === q;
-        })
+        items: yearArr.filter(function(v){ return Math.floor(fiscalMonthIndex(v.date)/3)+1 === q; })
       };
     });
     renderCrossTable("tblQuarter", quarterGroups);
 
-    // ---- 月別（分類別クロス集計） ----
-    const monthGroups = [];
-    for(let m=1;m<=12;m++){
-      monthGroups.push({
-        label: m+"月",
-        items: yearArr.filter(function(v){ return parseInt(v.date.slice(5,7),10)===m; })
-      });
-    }
-    renderCrossTable("tblMonth", monthGroups);
-
-    // ---- 週別（分類別クロス集計） ----
-    const weekKeySet = new Set();
-    yearArr.forEach(function(v){
-      const info = isoWeekInfo(v.date);
-      weekKeySet.add(info.year+"-W"+String(info.week).padStart(2,"0"));
-    });
-    const weekGroups = Array.from(weekKeySet).sort().reverse().map(function(k){
+    // ---- 週別（4/1の週を W1 とする年度基準の週番号） ----
+    const weekNumSet = new Set();
+    yearArr.forEach(function(v){ weekNumSet.add(fiscalWeekNumber(v.date, selFy)); });
+    const weekGroups = Array.from(weekNumSet).sort(function(a,b){ return b-a; }).map(function(w){
       return {
-        label: k,
-        items: yearArr.filter(function(v){
-          const info = isoWeekInfo(v.date);
-          return (info.year+"-W"+String(info.week).padStart(2,"0")) === k;
-        })
+        label: "W"+w,
+        items: yearArr.filter(function(v){ return fiscalWeekNumber(v.date, selFy)===w; })
       };
     });
     renderCrossTable("tblWeek", weekGroups);
 
     // ---- サマリー統計 ----
     const yearTotal = yearArr.length;
-    const nowY = new Date().getFullYear();
-    const nowInfo = isoWeekInfo(todayStr());
+    const totalWeeks = totalFiscalWeeks(selFy);
     let weeksElapsed;
-    if(parseInt(selYear,10) === nowY){
-      weeksElapsed = nowInfo.week;
-    }else if(parseInt(selYear,10) < nowY){
-      weeksElapsed = isoWeeksInYear(parseInt(selYear,10));
+    if(selFy === nowFy){
+      weeksElapsed = fiscalWeekNumber(todayStr(), selFy);
+    }else if(selFy < nowFy){
+      weeksElapsed = totalWeeks;
     }else{
       weeksElapsed = 1;
     }
@@ -1162,8 +1194,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   function buildWeeklyReport(){
     const offset = parseInt(reportWeekSel.value, 10) || 0;
     const range = getWeekRange(offset);
-    const reportCategories = CATEGORIES.filter(function(c){ return c !== "初台"; });
-    const arr = Object.values(visits).filter(function(v){ return !!v.date && v.category && v.category !== "初台"; });
+    const reportCategories = CATEGORIES;
+    const arr = Object.values(visits).filter(function(v){ return !!v.date && v.category; });
 
     const weekArr = arr.filter(function(v){ return v.date>=range.start && v.date<=range.end; });
     const cumArr = arr.filter(function(v){ return v.date>=reportConfig.startDate && v.date<=range.end; });
@@ -1256,7 +1288,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
     const tbody = document.querySelector("#cfgTable tbody");
     tbody.innerHTML = "";
-    CATEGORIES.filter(function(cat){ return cat !== "初台"; }).forEach(function(cat){
+    CATEGORIES.forEach(function(cat){
       const tr = document.createElement("tr");
       const baseline = reportConfig.baseline[cat]||[0,0,0,0];
       const mode = reportConfig.breakdownMode[cat]||"none";
