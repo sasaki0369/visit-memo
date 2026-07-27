@@ -536,13 +536,18 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
   // ---------- Firebase init / localStorage fallback ----------
   let db = null, firebaseReady = false, firebaseConfigured = false;
+  let initError = null;
   try{
     if(firebaseConfig.apiKey !== "YOUR_API_KEY"){
-      firebase.initializeApp(firebaseConfig);
-      db = firebase.database();
-      firebaseConfigured = true;
+      if(typeof firebase === "undefined"){
+        initError = "Firebase SDKが読み込まれませんでした（ネットワーク制限や広告ブロッカーの可能性があります）";
+      }else{
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+        firebaseConfigured = true;
+      }
     }
-  }catch(e){ console.error(e); }
+  }catch(e){ console.error(e); initError = (e && e.message) ? e.message : String(e); }
 
   const LOCAL_KEY = "houmonroku_visits_v1";
   const memoryStorage = {};
@@ -641,7 +646,11 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       loadLocal();
     });
   }else{
-    showConnMsg("Firebase未設定のため、このデバイスのみにデータが保存されています（README参照）");
+    if(initError){
+      showConnMsg("Firebaseへの接続に失敗しました（"+initError+"）。通信環境やブラウザの拡張機能（広告ブロッカー等）が原因の可能性があります。このデバイスのみにデータが保存されています。");
+    }else{
+      showConnMsg("Firebase未設定のため、このデバイスのみにデータが保存されています（README参照）");
+    }
     try{ reportConfig = mergeReportConfig(JSON.parse(safeStorage.getItem(REPORT_LOCAL_KEY) || "null")); }catch(e){}
     loadLocal();
   }
