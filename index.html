@@ -297,10 +297,6 @@
 
   .tabpage{ display:none; }
   .tabpage.active{ display:block; }
-
-  @media(min-width:640px){
-    .stat-grid{ grid-template-columns:repeat(4,1fr); }
-  }
 </style>
 </head>
 <body>
@@ -422,7 +418,6 @@
         <div class="stat-box"><div class="num" id="statYearTotal">0</div><div class="lbl">年度間訪問回数</div></div>
         <div class="stat-box"><div class="num" id="statWeekAvg">0</div><div class="lbl">週平均訪問回数</div></div>
         <div class="stat-box"><div class="num" id="statPrefCount">0</div><div class="lbl">訪問都道府県数</div></div>
-        <div class="stat-box"><div class="num" id="statAllTotal">0</div><div class="lbl">全期間累計</div></div>
       </div>
     </div>
 
@@ -1352,7 +1347,6 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     document.getElementById("statYearTotal").textContent = yearTotal;
     document.getElementById("statWeekAvg").textContent = weekAvg.toFixed(2);
     document.getElementById("statPrefCount").textContent = new Set(yearArr.map(function(v){return v.pref;})).size;
-    document.getElementById("statAllTotal").textContent = arr.length;
   }
 
   // ---------- 週報 ----------
