@@ -230,6 +230,18 @@
     font-size:10.5px; color:var(--gold); background:#F1E9D6;
     border-radius:20px; padding:2px 9px; white-space:nowrap;
   }
+  .dedup-group{
+    border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:10px; background:#fff;
+  }
+  .dedup-group-title{ font-size:12.5px; font-weight:700; color:var(--accent-deep); margin-bottom:6px; }
+  .dedup-record{ font-size:12.5px; padding:6px 0; border-top:1px dashed var(--line); }
+  .dedup-record:first-of-type{ border-top:none; }
+  .dedup-record .badge{
+    display:inline-block; font-size:10px; font-weight:700; border-radius:4px; padding:1px 6px; margin-right:6px;
+  }
+  .dedup-record.keep .badge{ background:var(--accent-bg); color:var(--accent-deep); }
+  .dedup-record.remove .badge{ background:var(--warn-bg); color:var(--warn); }
+  .dedup-record .meta{ color:var(--ink-soft); }
 
   /* ---------- Aggregation ---------- */
   .stat-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
@@ -382,6 +394,15 @@
         <button class="btn secondary block" id="dedupBtn">重複レコードを整理する</button>
       </div>
       <div class="import-note" id="dedupNote" style="display:none;"></div>
+      <div id="dedupPreview" style="display:none; margin-top:10px;">
+        <div class="dedup-group-list" id="dedupGroupList"></div>
+        <div class="btn-row" style="margin-top:10px;">
+          <button class="btn block" id="dedupConfirmBtn">この内容で統合する</button>
+        </div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button class="btn secondary block" id="dedupCancelBtn">キャンセル</button>
+        </div>
+      </div>
       <div class="btn-row" style="margin-top:14px;">
         <button class="btn danger block" id="deleteAllBtn">全レコードを削除</button>
       </div>
@@ -427,6 +448,7 @@
     <div class="card">
       <h2>都道府県別 訪問回数マップ</h2>
       <div class="agg-note">※初台への出社は合計から除外しています</div>
+      <div class="agg-note">※東京都は訪問回数が突出しやすいため、色分けの基準（最大値）から除外し、ハッチ柄で表示しています</div>
       <div class="map-wrap" id="mapWrap"></div>
       <div class="legend">
         <span>0</span>
@@ -988,7 +1010,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     el.textContent = msg;
   }
 
-  document.getElementById("dedupBtn").addEventListener("click", function(){
+  function computeDedupPlan(){
     const entries = Object.entries(visits);
     const groups = {};
     entries.forEach(function(e){
@@ -999,19 +1021,13 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       groups[key].push({ id: id, v: v });
     });
 
-    const toDelete = [];
-    const toUpdate = {};
-    let mergedGroupCount = 0;
-
+    const plan = []; // [{ keep:{id,v}, remove:[{id,v}], merged:{...} }]
     Object.values(groups).forEach(function(group){
       if(group.length<=1) return;
-      mergedGroupCount++;
-      // 最も古い createdAt のレコードを残す
       group.sort(function(a,b){ return (a.v.createdAt||0)-(b.v.createdAt||0); });
       const keep = group[0];
       const rest = group.slice(1);
 
-      // 目的・メモは重複を除いて結合し、情報を失わないようにする
       const purposes = [keep.v.purpose].concat(rest.map(function(r){ return r.v.purpose; }))
         .filter(function(s){ return s && s.trim(); });
       const memos = [keep.v.memo].concat(rest.map(function(r){ return r.v.memo; }))
@@ -1022,18 +1038,74 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
         purpose: uniq(purposes).join("／"),
         memo: uniq(memos).join("\n---\n")
       });
-      toUpdate[keep.id] = merged;
-      rest.forEach(function(r){ toDelete.push(r.id); });
+      plan.push({ keep: keep, remove: rest, merged: merged });
     });
+    // 日付順に並べ替え（見やすさのため）
+    plan.sort(function(a,b){ return (b.keep.v.date||"").localeCompare(a.keep.v.date||""); });
+    return plan;
+  }
 
-    if(mergedGroupCount===0){
+  let currentDedupPlan = [];
+
+  function renderDedupPreview(plan){
+    const listEl = document.getElementById("dedupGroupList");
+    listEl.innerHTML = "";
+    plan.forEach(function(group){
+      const div = document.createElement("div");
+      div.className = "dedup-group";
+      const title = escapeHtml(group.keep.v.date)+"　"+escapeHtml(group.keep.v.category||"")+"　"+escapeHtml(group.keep.v.place||"");
+      let html = "<div class='dedup-group-title'>"+title+"（"+(group.remove.length+1)+"件 → 1件に統合）</div>";
+
+      function recordLine(rec, kind){
+        const v = rec.v;
+        const badge = kind==="keep" ? "残す" : "削除";
+        const created = v.createdAt ? new Date(v.createdAt).toLocaleString("ja-JP") : "";
+        return "<div class='dedup-record "+kind+"'>"+
+          "<span class='badge'>"+badge+"</span>"+
+          (v.purpose ? "目的："+escapeHtml(v.purpose)+"　" : "")+
+          (v.memo ? "メモ："+escapeHtml(v.memo)+"　" : "")+
+          "<span class='meta'>（登録："+created+"）</span>"+
+          "</div>";
+      }
+      html += recordLine(group.keep, "keep");
+      group.remove.forEach(function(r){ html += recordLine(r, "remove"); });
+      html += "<div class='dedup-record'><span class='badge' style='background:var(--accent-bg);color:var(--accent-deep);'>統合後</span>"+
+        (group.merged.purpose ? "目的："+escapeHtml(group.merged.purpose)+"　" : "")+
+        (group.merged.memo ? "メモ："+escapeHtml(group.merged.memo) : "")+
+        "</div>";
+      div.innerHTML = html;
+      listEl.appendChild(div);
+    });
+  }
+
+  document.getElementById("dedupBtn").addEventListener("click", function(){
+    const plan = computeDedupPlan();
+    currentDedupPlan = plan;
+    if(plan.length===0){
+      document.getElementById("dedupPreview").style.display = "none";
       showDedupNote("重複レコードは見つかりませんでした。");
       return;
     }
+    document.getElementById("dedupNote").style.display = "none";
+    renderDedupPreview(plan);
+    document.getElementById("dedupPreview").style.display = "block";
+  });
 
-    if(!confirm(mergedGroupCount+"件のグループで重複が見つかりました。統合してよろしいですか？（"+toDelete.length+"件を削除し、1件にまとめます）")){
-      return;
-    }
+  document.getElementById("dedupCancelBtn").addEventListener("click", function(){
+    currentDedupPlan = [];
+    document.getElementById("dedupPreview").style.display = "none";
+  });
+
+  document.getElementById("dedupConfirmBtn").addEventListener("click", function(){
+    const plan = currentDedupPlan;
+    if(plan.length===0) return;
+
+    const toUpdate = {};
+    const toDelete = [];
+    plan.forEach(function(group){
+      toUpdate[group.keep.id] = group.merged;
+      group.remove.forEach(function(r){ toDelete.push(r.id); });
+    });
 
     if(firebaseReady){
       const updates = {};
@@ -1046,7 +1118,9 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       saveLocal();
       renderAll();
     }
-    showDedupNote(mergedGroupCount+"件のグループを統合し、"+toDelete.length+"件の重複レコードを削除しました。");
+    document.getElementById("dedupPreview").style.display = "none";
+    showDedupNote(plan.length+"件のグループを統合し、"+toDelete.length+"件の重複レコードを削除しました。");
+    currentDedupPlan = [];
   });
 
   document.getElementById("deleteAllBtn").addEventListener("click", function(){
@@ -1476,6 +1550,25 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     const svgns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(svgns, "svg");
     svg.setAttribute("viewBox", "0 0 "+vb[2]+" "+vb[3]);
+
+    const defs = document.createElementNS(svgns, "defs");
+    const pattern = document.createElementNS(svgns, "pattern");
+    pattern.setAttribute("id", "tokyo-hatch");
+    pattern.setAttribute("width", "6");
+    pattern.setAttribute("height", "6");
+    pattern.setAttribute("patternTransform", "rotate(45)");
+    pattern.setAttribute("patternUnits", "userSpaceOnUse");
+    const bgRect = document.createElementNS(svgns, "rect");
+    bgRect.setAttribute("width","6"); bgRect.setAttribute("height","6");
+    bgRect.setAttribute("fill", "#F2EBDB");
+    const stripe = document.createElementNS(svgns, "rect");
+    stripe.setAttribute("width","3"); stripe.setAttribute("height","6");
+    stripe.setAttribute("fill", "#A5813C");
+    pattern.appendChild(bgRect);
+    pattern.appendChild(stripe);
+    defs.appendChild(pattern);
+    svg.appendChild(defs);
+
     Object.keys(MAP_DATA.paths).forEach(function(name){
       const path = document.createElementNS(svgns, "path");
       path.setAttribute("d", MAP_DATA.paths[name]);
@@ -1496,23 +1589,30 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     const info = document.getElementById("prefInfo");
     info.style.display = "flex";
     document.getElementById("prefInfoName").textContent = name;
-    document.getElementById("prefInfoCount").textContent = counts[name]+" 回";
+    document.getElementById("prefInfoCount").textContent = counts[name]+" 回"+(name==="東京都" ? "（色分けの基準からは除外）" : "");
   }
 
   function renderMap(){
     if(!mapBuilt) buildMapSvg();
     const counts = computePrefCounts();
-    const max = Math.max(1, Math.max.apply(null, Object.values(counts)));
+    // 東京都は突出しやすく他県の差が見えづらくなるため、色分けの基準（最大値）から除外する
+    const nonTokyoCounts = PREF_LIST.filter(function(p){ return p!=="東京都"; }).map(function(p){ return counts[p]||0; });
+    const max = Math.max(1, Math.max.apply(null, nonTokyoCounts));
     document.querySelectorAll("#mapWrap path").forEach(function(path){
       const name = path.getAttribute("data-pref");
       const c = counts[name]||0;
-      path.setAttribute("fill", c===0 ? "#F2EBDB" : colorForRatio(c/max));
+      if(name==="東京都"){
+        path.setAttribute("fill", c===0 ? "#F2EBDB" : "url(#tokyo-hatch)");
+      }else{
+        const ratio = Math.min(1, c/max);
+        path.setAttribute("fill", c===0 ? "#F2EBDB" : colorForRatio(ratio));
+      }
       const title = document.createElementNS("http://www.w3.org/2000/svg","title");
-      title.textContent = name+"："+c+"回";
+      title.textContent = name+"："+c+"回"+(name==="東京都" ? "（基準から除外）" : "");
       path.innerHTML = "";
       path.appendChild(title);
     });
-    document.getElementById("legendMax").textContent = max+"回";
+    document.getElementById("legendMax").textContent = max+"回（東京都を除く）";
     const scaleEl = document.getElementById("legendScale");
     scaleEl.innerHTML = "";
     for(let i=0;i<8;i++){
