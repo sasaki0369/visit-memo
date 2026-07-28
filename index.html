@@ -174,6 +174,22 @@
   input:focus, select:focus, textarea:focus{ outline:2px solid var(--accent-bg); border-color:var(--accent); }
 
   .row2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .row3{ display:grid; grid-template-columns:1fr 0.8fr 1fr; gap:8px; }
+  .order-btn{
+    width:100%;
+    font-family:"DM Mono", monospace;
+    font-size:19px; font-weight:700;
+    padding:9px 10px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:#fff;
+    color:var(--accent);
+    text-align:center;
+    cursor:pointer;
+    -webkit-user-select:none; user-select:none;
+    touch-action:manipulation;
+  }
+  .order-btn:active{ background:var(--accent-bg); }
 
   .btn{
     display:inline-flex; align-items:center; justify-content:center;
@@ -319,10 +335,14 @@
   <section class="tabpage active" id="tab-record">
     <div class="card">
       <h2 id="formTitle">新規訪問を記録</h2>
-      <div class="row2">
+      <div class="row3">
         <div class="field">
           <label>訪問日</label>
           <input type="date" id="f-date">
+        </div>
+        <div class="field">
+          <label>当日の訪問順</label>
+          <button type="button" id="f-order-btn" class="order-btn" data-value="1">1</button>
         </div>
         <div class="field">
           <label>都道府県</label>
@@ -732,10 +752,62 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   }
   dateInput.value = todayStr();
 
+  // 当日の訪問順：タップで+1、長押しで1にリセットするボタン
+  const orderCtl = (function(){
+    const btn = document.getElementById("f-order-btn");
+    let pressTimer = null;
+    let longPressTriggered = false;
+
+    function setValue(v){
+      const n = Math.max(1, parseInt(v,10) || 1);
+      btn.textContent = n;
+      btn.dataset.value = n;
+    }
+    function getValue(){
+      return parseInt(btn.dataset.value, 10) || 1;
+    }
+    function clearTimer(){
+      if(pressTimer){ clearTimeout(pressTimer); pressTimer = null; }
+    }
+
+    btn.addEventListener("pointerdown", function(){
+      longPressTriggered = false;
+      clearTimer();
+      pressTimer = setTimeout(function(){
+        longPressTriggered = true;
+        setValue(1);
+        if(navigator.vibrate) navigator.vibrate(15);
+      }, 600);
+    });
+    btn.addEventListener("pointerup", clearTimer);
+    btn.addEventListener("pointerleave", clearTimer);
+    btn.addEventListener("pointercancel", clearTimer);
+    btn.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+
+    btn.addEventListener("click", function(){
+      if(longPressTriggered){
+        longPressTriggered = false;
+        return; // 長押しでリセット済みのため加算しない
+      }
+      setValue(getValue()+1);
+    });
+
+    return { get: getValue, set: setValue };
+  })();
+
+  function suggestOrderForDate(date){
+    const countSameDay = Object.values(visits).filter(function(v){ return v.date===date; }).length;
+    orderCtl.set(countSameDay + 1);
+  }
+  dateInput.addEventListener("change", function(){
+    if(!editingId) suggestOrderForDate(dateInput.value);
+  });
+
   document.getElementById("saveBtn").addEventListener("click", function(){
     const date = dateInput.value;
     const pref = prefSel.value;
     const category = categorySel.value;
+    const order = orderCtl.get();
     const place = document.getElementById("f-place").value.trim();
     const purpose = document.getElementById("f-purpose").value.trim();
     const memo = document.getElementById("f-memo").value.trim();
@@ -755,7 +827,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     }
     if(!id) id = genId();
 
-    const data = { date: date, pref: pref, category: category, place: place, purpose: purpose, memo: memo, createdAt: (visits[id] && visits[id].createdAt) || Date.now() };
+    const data = { date: date, pref: pref, category: category, order: order, place: place, purpose: purpose, memo: memo, createdAt: (visits[id] && visits[id].createdAt) || Date.now() };
     upsertVisit(id, data);
     resetForm();
   });
@@ -771,6 +843,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     document.getElementById("f-place").value = "";
     document.getElementById("f-purpose").value = "";
     document.getElementById("f-memo").value = "";
+    suggestOrderForDate(dateInput.value);
   }
 
   function startEdit(id){
@@ -780,6 +853,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     document.getElementById("formTitle").textContent = "訪問記録を編集";
     document.getElementById("cancelRow").style.display = "flex";
     dateInput.value = v.date;
+    orderCtl.set(v.order || 1);
     prefSel.value = v.pref;
     categorySel.value = v.category || CATEGORIES[0];
     document.getElementById("f-place").value = v.place;
@@ -828,7 +902,14 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     if(kw) arr = arr.filter(function(v){
       return (v.place && v.place.toLowerCase().includes(kw)) || (v.memo && v.memo.toLowerCase().includes(kw));
     });
-    arr.sort(function(a,b){ return (b.date||"").localeCompare(a.date||"") || (b.createdAt||0)-(a.createdAt||0); });
+    arr.sort(function(a,b){
+      const dateCmp = (b.date||"").localeCompare(a.date||"");
+      if(dateCmp!==0) return dateCmp;
+      const ao = (a.order!=null) ? a.order : Infinity;
+      const bo = (b.order!=null) ? b.order : Infinity;
+      if(ao!==bo) return ao-bo;
+      return (a.createdAt||0)-(b.createdAt||0);
+    });
 
     listEl.innerHTML = "";
     emptyEl.style.display = arr.length===0 ? "block" : "none";
@@ -838,7 +919,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       item.className = "visit-item";
       item.innerHTML =
         '<div class="top">'+
-          '<span class="date">'+escapeHtml(v.date||"")+'</span>'+
+          '<span class="date">'+escapeHtml(v.date||"")+(v.order!=null ? "（"+v.order+"）" : "")+'</span>'+
           '<span class="place">'+escapeHtml(v.place||"")+'</span>'+
           (v.category ? '<span class="cat-tag">'+escapeHtml(v.category)+'</span>' : '')+
           '<span class="pref-tag">'+escapeHtml(v.pref||"")+'</span>'+
@@ -847,6 +928,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
         (v.memo ? '<div class="memo">'+escapeHtml(v.memo)+'</div>' : '<div class="memo">（メモなし）</div>')+
         '<div class="actions">'+
           '<button class="btn secondary" data-act="edit">編集</button>'+
+          '<button class="btn secondary" data-act="copyday">当日の訪問履歴をコピー</button>'+
           '<button class="btn danger" data-act="del">削除</button>'+
         '</div>';
       item.addEventListener("click", function(e){
@@ -855,10 +937,50 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
           if(confirm("この記録を削除しますか？")) deleteVisit(v.id);
           return;
         }
+        if(e.target.dataset.act === "copyday"){
+          const text = buildDayHistoryText(v.date);
+          const btn = e.target;
+          const original = btn.textContent;
+          copyTextToClipboard(text, function(){
+            btn.textContent = "コピーしました！";
+            setTimeout(function(){ btn.textContent = original; }, 1500);
+          });
+          return;
+        }
         item.classList.toggle("open");
       });
       listEl.appendChild(item);
     });
+  }
+
+  function buildDayHistoryText(date){
+    const sameDay = Object.values(visits).filter(function(v){ return v.date===date && v.place; });
+    sameDay.sort(function(a,b){
+      const ao = (a.order!=null) ? a.order : Infinity;
+      const bo = (b.order!=null) ? b.order : Infinity;
+      if(ao!==bo) return ao-bo;
+      return (a.createdAt||0)-(b.createdAt||0);
+    });
+    return sameDay.map(function(v){ return v.place; }).join("・");
+  }
+
+  function copyTextToClipboard(text, cb){
+    function legacyCopy(){
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      try{ document.execCommand("copy"); cb(); }
+      catch(e){ alert("コピーに失敗しました。手動で選択してコピーしてください。"); }
+      document.body.removeChild(ta);
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(cb).catch(legacyCopy);
+    }else{
+      legacyCopy();
+    }
   }
 
   function escapeHtml(s){
@@ -868,7 +990,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   }
 
   // ---------- CSV Export / Import ----------
-  const CSV_HEADERS = ["id","訪問日","都道府県","分類","拠点名","目的","メモ","登録日時"];
+  const CSV_HEADERS = ["id","訪問日","訪問順","都道府県","分類","拠点名","目的","メモ","登録日時"];
 
   function csvField(val){
     const s = (val===undefined || val===null) ? "" : String(val);
@@ -882,7 +1004,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     const lines = [CSV_HEADERS.map(csvField).join(",")];
     arr.forEach(function(v){
       lines.push([
-        csvField(v.id), csvField(v.date), csvField(v.pref), csvField(v.category), csvField(v.place),
+        csvField(v.id), csvField(v.date), csvField(v.order!=null ? v.order : ""), csvField(v.pref), csvField(v.category), csvField(v.place),
         csvField(v.purpose), csvField(v.memo), csvField(v.createdAt||"")
       ].join(","));
     });
@@ -935,6 +1057,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       const header = rows[0];
       const idxId = header.indexOf("id");
       const idxDate = header.indexOf("訪問日");
+      const idxOrder = header.indexOf("訪問順");
       const idxPref = header.indexOf("都道府県");
       const idxCategory = header.indexOf("分類");
       const idxPlace = header.indexOf("拠点名");
@@ -943,7 +1066,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       const idxCreated = header.indexOf("登録日時");
 
       if(idxDate===-1 || idxPlace===-1){
-        showImportNote("列見出しが認識できませんでした。エクスポートしたCSVの形式（id,訪問日,都道府県,分類,拠点名,目的,メモ,登録日時）でご用意ください。");
+        showImportNote("列見出しが認識できませんでした。エクスポートしたCSVの形式（id,訪問日,訪問順,都道府県,分類,拠点名,目的,メモ,登録日時）でご用意ください。");
         return;
       }
 
@@ -957,12 +1080,14 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
         if(!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !place){ skipCount++; continue; }
         const pref = idxPref!==-1 ? (r[idxPref]||"").trim() : "";
         const category = idxCategory!==-1 ? (r[idxCategory]||"").trim() : "";
+        const orderRaw = idxOrder!==-1 ? (r[idxOrder]||"").trim() : "";
+        const order = orderRaw && !isNaN(Number(orderRaw)) ? parseInt(orderRaw,10) : null;
         const purpose = idxPurpose!==-1 ? (r[idxPurpose]||"").trim() : "";
         const memo = idxMemo!==-1 ? (r[idxMemo]||"").trim() : "";
         const createdRaw = idxCreated!==-1 ? (r[idxCreated]||"").trim() : "";
         const createdAt = createdRaw && !isNaN(Number(createdRaw)) ? Number(createdRaw) : Date.now();
         const id = (idxId!==-1 && r[idxId] && r[idxId].trim()) ? r[idxId].trim() : genId();
-        updates[id] = { date: date, pref: pref, category: category, place: place, purpose: purpose, memo: memo, createdAt: createdAt };
+        updates[id] = { date: date, pref: pref, category: category, order: order, place: place, purpose: purpose, memo: memo, createdAt: createdAt };
         okCount++;
       }
 
