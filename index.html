@@ -269,8 +269,6 @@
   table.agg th, table.agg td{ border-bottom:1px solid var(--line); padding:7px 4px; text-align:left; }
   table.agg th{ color:var(--ink-soft); font-weight:700; font-size:11.5px; }
   table.agg td.num{ text-align:right; font-family:"DM Mono", monospace; font-weight:700; }
-  .bar-cell{ position:relative; }
-  .bar{ height:8px; background:var(--accent); border-radius:4px; margin-top:4px; }
 
   select.year-select{ width:auto; display:inline-block; font-weight:700; color:var(--accent); }
   .agg-note{ font-size:11.5px; color:var(--ink-soft); margin-bottom:10px; }
@@ -674,33 +672,35 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     });
   }
 
-  if(firebaseConfigured){
-    firebase.auth().onAuthStateChanged(function(user){
-      if(user && !firebaseReady){
-        firebaseReady = true;
-        attachFirebaseListeners();
-      }
-    });
-    firebase.auth().signInAnonymously().catch(function(err){
-      console.error(err);
-      showConnMsg("Firebase認証に失敗しました（"+(err && err.code ? err.code : err)+"）。Firebase Console → Authentication → Sign-in method で「匿名」が有効になっているかご確認ください。このデバイスのみにデータが保存されています。");
-      try{ reportConfig = mergeReportConfig(JSON.parse(safeStorage.getItem(REPORT_LOCAL_KEY) || "null")); }catch(e){}
-      loadLocal();
-    });
-  }else{
-    if(initError){
-      showConnMsg("Firebaseへの接続に失敗しました（"+initError+"）。通信環境やブラウザの拡張機能（広告ブロッカー等）が原因の可能性があります。このデバイスのみにデータが保存されています。");
-    }else{
-      showConnMsg("Firebase未設定のため、このデバイスのみにデータが保存されています（README参照）");
-    }
-    try{ reportConfig = mergeReportConfig(JSON.parse(safeStorage.getItem(REPORT_LOCAL_KEY) || "null")); }catch(e){}
-    loadLocal();
-  }
-
   function showConnMsg(text){
     const el = document.getElementById("connMsg");
     el.textContent = text;
     el.style.display = "block";
+  }
+
+  function startDataLoading(){
+    if(firebaseConfigured){
+      firebase.auth().onAuthStateChanged(function(user){
+        if(user && !firebaseReady){
+          firebaseReady = true;
+          attachFirebaseListeners();
+        }
+      });
+      firebase.auth().signInAnonymously().catch(function(err){
+        console.error(err);
+        showConnMsg("Firebase認証に失敗しました（"+(err && err.code ? err.code : err)+"）。Firebase Console → Authentication → Sign-in method で「匿名」が有効になっているかご確認ください。このデバイスのみにデータが保存されています。");
+        try{ reportConfig = mergeReportConfig(JSON.parse(safeStorage.getItem(REPORT_LOCAL_KEY) || "null")); }catch(e){}
+        loadLocal();
+      });
+    }else{
+      if(initError){
+        showConnMsg("Firebaseへの接続に失敗しました（"+initError+"）。通信環境やブラウザの拡張機能（広告ブロッカー等）が原因の可能性があります。このデバイスのみにデータが保存されています。");
+      }else{
+        showConnMsg("Firebase未設定のため、このデバイスのみにデータが保存されています（README参照）");
+      }
+      try{ reportConfig = mergeReportConfig(JSON.parse(safeStorage.getItem(REPORT_LOCAL_KEY) || "null")); }catch(e){}
+      loadLocal();
+    }
   }
 
   // ---------- Prefecture / Category select ----------
@@ -921,10 +921,11 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     arr.sort(function(a,b){
       const dateCmp = (b.date||"").localeCompare(a.date||"");
       if(dateCmp!==0) return dateCmp;
-      const ao = (a.order!=null) ? a.order : Infinity;
-      const bo = (b.order!=null) ? b.order : Infinity;
-      if(ao!==bo) return ao-bo;
-      return (a.createdAt||0)-(b.createdAt||0);
+      // 同じ日は訪問順の降順で並べる（1が一番下に来るように）
+      const ao = (a.order!=null) ? a.order : -Infinity;
+      const bo = (b.order!=null) ? b.order : -Infinity;
+      if(ao!==bo) return bo-ao;
+      return (b.createdAt||0)-(a.createdAt||0);
     });
 
     listEl.innerHTML = "";
@@ -935,7 +936,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       item.className = "visit-item";
       item.innerHTML =
         '<div class="top">'+
-          '<span class="date">'+escapeHtml(v.date||"")+(v.order!=null ? "（"+v.order+"）" : "")+'</span>'+
+          '<span class="date">'+escapeHtml(v.date||"")+'</span>'+
           '<span class="place">'+escapeHtml(v.place||"")+'</span>'+
           (v.category ? '<span class="cat-tag">'+escapeHtml(v.category)+'</span>' : '')+
           '<span class="pref-tag">'+escapeHtml(v.pref||"")+'</span>'+
@@ -1785,6 +1786,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
   resetForm();
   renderReportSettings();
+  startDataLoading();
 })();
 </script>
 </body>
