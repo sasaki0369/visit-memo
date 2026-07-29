@@ -705,11 +705,27 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
   // ---------- Prefecture / Category select ----------
   const prefSel = document.getElementById("f-pref");
-  PREF_LIST.forEach(function(p){
-    const o = document.createElement("option");
-    o.value = p; o.textContent = p;
-    prefSel.appendChild(o);
-  });
+
+  function renderPrefOptions(){
+    const counts = {};
+    PREF_LIST.forEach(function(p){ counts[p] = 0; });
+    Object.values(visits).forEach(function(v){ if(v.pref && counts.hasOwnProperty(v.pref)) counts[v.pref]++; });
+
+    const withVisits = PREF_LIST.filter(function(p){ return counts[p]>0; })
+      .sort(function(a,b){ return counts[b]-counts[a]; });
+    const noVisits = PREF_LIST.filter(function(p){ return counts[p]===0; });
+    const ordered = withVisits.concat(noVisits);
+
+    const cur = prefSel.value;
+    prefSel.innerHTML = "";
+    ordered.forEach(function(p){
+      const o = document.createElement("option");
+      o.value = p; o.textContent = p;
+      prefSel.appendChild(o);
+    });
+    if(cur) prefSel.value = cur;
+  }
+  renderPrefOptions();
 
   const categorySel = document.getElementById("f-category");
   CATEGORIES.forEach(function(c){
@@ -1759,6 +1775,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
   // ---------- Master render ----------
   function renderAll(){
+    renderPrefOptions();
     renderFilterYearOptions();
     renderList();
     if(document.getElementById("tab-agg").classList.contains("active")) renderAggregation();
