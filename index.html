@@ -1594,18 +1594,16 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     }
 
     // 見出し行のうち「■〜行動履歴」部分のみ太字にし、（）内の説明は通常の太さのまま
-    // SharePoint等のリッチテキスト欄に貼り付けた際に反映されるようHTML形式でもコピーする
+    // 各行を独立した<div>にすることで、Evernote等の貼り付け先でも改行が失われないようにする
     const lines = text.split("\n");
     const headerLine = lines[0] || "";
-    const restLines = lines.slice(1).join("\n");
+    const restLineArr = lines.slice(1);
     const parenIdx = headerLine.indexOf("（");
     const headerBold = parenIdx===-1 ? headerLine : headerLine.slice(0, parenIdx);
     const headerNormal = parenIdx===-1 ? "" : headerLine.slice(parenIdx);
     const htmlBody =
-      "<div>"+
-        "<b>"+escapeHtml(headerBold)+"</b>"+escapeHtml(headerNormal)+"<br>"+
-        escapeHtml(restLines).replace(/\n/g, "<br>")+
-      "</div>";
+      "<div><b>"+escapeHtml(headerBold)+"</b>"+escapeHtml(headerNormal)+"</div>"+
+      restLineArr.map(function(l){ return "<div>"+(escapeHtml(l) || "&nbsp;")+"</div>"; }).join("");
 
     if(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write){
       try{
