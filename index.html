@@ -1585,41 +1585,10 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       note.textContent = "コピーしました";
       setTimeout(function(){ note.style.display = "none"; }, 2000);
     }
-    function plainFallback(){
-      if(navigator.clipboard && navigator.clipboard.writeText){
-        navigator.clipboard.writeText(text).then(showCopied).catch(function(){ fallbackCopy(text, showCopied); });
-      }else{
-        fallbackCopy(text, showCopied);
-      }
-    }
-
-    // 見出し行のうち「■〜行動履歴」部分のみ太字にし、（）内の説明は通常の太さのまま
-    // 各行を独立した<div>にすることで、Evernote等の貼り付け先でも改行が失われないようにする
-    const lines = text.split("\n");
-    const headerLine = lines[0] || "";
-    const restLineArr = lines.slice(1);
-    const parenIdx = headerLine.indexOf("（");
-    const headerBold = parenIdx===-1 ? headerLine : headerLine.slice(0, parenIdx);
-    const headerNormal = parenIdx===-1 ? "" : headerLine.slice(parenIdx);
-    const htmlBody =
-      "<div style=\"font-weight:400;\">"+
-        "<span style=\"font-weight:700;\">"+escapeHtml(headerBold)+"</span>"+
-        "<span style=\"font-weight:400;\">"+escapeHtml(headerNormal)+"</span>"+
-      "</div>"+
-      restLineArr.map(function(l){ return "<div style=\"font-weight:400;\">"+(escapeHtml(l) || "&nbsp;")+"</div>"; }).join("");
-
-    if(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write){
-      try{
-        const item = new ClipboardItem({
-          "text/plain": new Blob([text], {type:"text/plain"}),
-          "text/html": new Blob([htmlBody], {type:"text/html"})
-        });
-        navigator.clipboard.write([item]).then(showCopied).catch(plainFallback);
-      }catch(e){
-        plainFallback();
-      }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(showCopied).catch(function(){ fallbackCopy(text, showCopied); });
     }else{
-      plainFallback();
+      fallbackCopy(text, showCopied);
     }
   });
 
