@@ -1602,8 +1602,11 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     const headerBold = parenIdx===-1 ? headerLine : headerLine.slice(0, parenIdx);
     const headerNormal = parenIdx===-1 ? "" : headerLine.slice(parenIdx);
     const htmlBody =
-      "<div><b>"+escapeHtml(headerBold)+"</b>"+escapeHtml(headerNormal)+"</div>"+
-      restLineArr.map(function(l){ return "<div>"+(escapeHtml(l) || "&nbsp;")+"</div>"; }).join("");
+      "<div style=\"font-weight:400;\">"+
+        "<span style=\"font-weight:700;\">"+escapeHtml(headerBold)+"</span>"+
+        "<span style=\"font-weight:400;\">"+escapeHtml(headerNormal)+"</span>"+
+      "</div>"+
+      restLineArr.map(function(l){ return "<div style=\"font-weight:400;\">"+(escapeHtml(l) || "&nbsp;")+"</div>"; }).join("");
 
     if(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write){
       try{
