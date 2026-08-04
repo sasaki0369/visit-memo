@@ -705,6 +705,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
   // ---------- Prefecture / Category select ----------
   const prefSel = document.getElementById("f-pref");
+  let prefOrderCache = PREF_LIST.slice();
 
   function renderPrefOptions(){
     const counts = {};
@@ -715,6 +716,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       .sort(function(a,b){ return counts[b]-counts[a]; });
     const noVisits = PREF_LIST.filter(function(p){ return counts[p]===0; });
     const ordered = withVisits.concat(noVisits);
+    prefOrderCache = ordered;
 
     const cur = prefSel.value;
     prefSel.innerHTML = "";
@@ -726,6 +728,10 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     if(cur) prefSel.value = cur;
   }
   renderPrefOptions();
+
+  function getDefaultPref(){
+    return prefOrderCache[0] || PREF_LIST[0];
+  }
 
   const categorySel = document.getElementById("f-category");
   CATEGORIES.forEach(function(c){
@@ -854,7 +860,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     document.getElementById("formTitle").textContent = "新規訪問を記録";
     document.getElementById("cancelRow").style.display = "none";
     dateInput.value = todayStr();
-    prefSel.value = PREF_LIST[0];
+    prefSel.value = getDefaultPref();
     categorySel.value = CATEGORIES[0];
     document.getElementById("f-place").value = "";
     document.getElementById("f-purpose").value = "";
