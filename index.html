@@ -534,13 +534,13 @@
 <script>
   // ▼▼▼ ここに自分のFirebaseプロジェクトの設定を貼り付けてください ▼▼▼
   const firebaseConfig = {
-    apiKey: "AIzaSyDjg3NjDdERnjhrpJaZDcuNDsJntECbiXM",
-    authDomain: "visit-memo.firebaseapp.com",
-    databaseURL: "https://visit-memo-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "visit-memo",
-    storageBucket: "visit-memo.firebasestorage.app",
-    messagingSenderId: "243470392302",
-    appId: "1:243470392302:web:2e5f80f4432f3c29ba4cff"
+    apiKey: "AIzaSyAxVn7JUuoBsNeSODksNYyEkd2W2E252_c",
+    authDomain: "life--log.firebaseapp.com",
+    databaseURL: "https://life--log-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "life--log",
+    storageBucket: "life--log.firebasestorage.app",
+    messagingSenderId: "790653257684",
+    appId: "1:790653257684:web:71c67770c637fb2b8f3841"
   };
   // ▲▲▲ ここまで ▲▲▲
 </script>
@@ -609,7 +609,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
   function upsertVisit(id, data){
     if(firebaseReady){
-      db.ref("visits/"+id).set(data);
+      db.ref("visitLog/visits/"+id).set(data);
     }else{
       visits[id] = data;
       saveLocal();
@@ -618,7 +618,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   }
   function deleteVisit(id){
     if(firebaseReady){
-      db.ref("visits/"+id).remove();
+      db.ref("visitLog/visits/"+id).remove();
     }else{
       delete visits[id];
       saveLocal();
@@ -651,7 +651,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
   function saveReportConfig(){
     if(firebaseReady){
-      db.ref("settings/reportConfig").set(reportConfig);
+      db.ref("visitLog/settings/reportConfig").set(reportConfig);
     }else{
       safeStorage.setItem(REPORT_LOCAL_KEY, JSON.stringify(reportConfig));
       renderReportSettings();
@@ -661,11 +661,11 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
   // Firebaseの読み書き（visits / settings）は匿名認証が完了してから開始する
   function attachFirebaseListeners(){
-    db.ref("visits").on("value", function(snap){
+    db.ref("visitLog/visits").on("value", function(snap){
       visits = snap.val() || {};
       renderAll();
     });
-    db.ref("settings/reportConfig").on("value", function(snap){
+    db.ref("visitLog/settings/reportConfig").on("value", function(snap){
       reportConfig = mergeReportConfig(snap.val());
       renderReportSettings();
       renderWeeklyReport();
@@ -1121,7 +1121,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
       if(firebaseReady){
         const dbUpdates = {};
-        Object.keys(updates).forEach(function(id){ dbUpdates["visits/"+id] = updates[id]; });
+        Object.keys(updates).forEach(function(id){ dbUpdates["visitLog/visits/"+id] = updates[id]; });
         db.ref().update(dbUpdates);
       }else{
         Object.assign(visits, updates);
@@ -1252,8 +1252,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
     if(firebaseReady){
       const updates = {};
-      Object.keys(toUpdate).forEach(function(id){ updates["visits/"+id] = toUpdate[id]; });
-      toDelete.forEach(function(id){ updates["visits/"+id] = null; });
+      Object.keys(toUpdate).forEach(function(id){ updates["visitLog/visits/"+id] = toUpdate[id]; });
+      toDelete.forEach(function(id){ updates["visitLog/visits/"+id] = null; });
       db.ref().update(updates);
     }else{
       Object.keys(toUpdate).forEach(function(id){ visits[id] = toUpdate[id]; });
@@ -1285,7 +1285,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       return;
     }
     if(firebaseReady){
-      db.ref("visits").set(null);
+      db.ref("visitLog/visits").set(null);
     }else{
       visits = {};
       saveLocal();
