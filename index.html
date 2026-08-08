@@ -1498,7 +1498,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   }
 
   // ---------- 週報 ----------
-  const REPORT_WEEK_LABELS = { "-2":"先々週", "-1":"前週", "0":"今週" };
+  const REPORT_WEEK_LABELS = { "-2":"先々週", "-1":"前週", "0":"今週", "1":"来週", "2":"再来週" };
+  const WEEKDAY_LABELS = ["月曜","火曜","水曜","木曜","金曜"]; // 週の日曜起点から+1〜+5日
 
   function getSundayOfWeek(d){
     const s = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -1577,10 +1578,39 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     return { text: header+"\n"+lines.join("\n"), range: range };
   }
 
+  function buildScheduleText(mainOffset){
+    const scheduleOffset = mainOffset + 1;
+    const range = getWeekRange(scheduleOffset);
+    const sunday = new Date(range.start+"T00:00:00");
+
+    const lines = WEEKDAY_LABELS.map(function(label, i){
+      const d = new Date(sunday);
+      d.setDate(d.getDate() + (i+1)); // 月曜=+1 ... 金曜=+5
+      const dateStr = fmtDate(d);
+      const dayVisits = Object.values(visits).filter(function(v){ return v.date===dateStr && v.place; });
+      dayVisits.sort(function(a,b){
+        const ao = (a.order!=null) ? a.order : Infinity;
+        const bo = (b.order!=null) ? b.order : Infinity;
+        if(ao!==bo) return ao-bo;
+        return (a.createdAt||0)-(b.createdAt||0);
+      });
+      const placesText = dayVisits.length ? dayVisits.map(function(v){ return v.place; }).join("→") : "予定なし";
+      return label+"：" +placesText;
+    });
+
+    const scheduleLabel = REPORT_WEEK_LABELS[String(scheduleOffset)] || "翌週";
+    const header = "■"+scheduleLabel+"の行動予定（あくまで予定）";
+    return { text: header+"\n"+lines.join("\n"), range: range };
+  }
+
   function renderWeeklyReport(){
+    const offset = parseInt(reportWeekSel.value, 10) || 0;
     const result = buildWeeklyReport();
-    document.getElementById("reportText").value = result.text;
-    document.getElementById("reportRange").textContent = "対象期間（日〜土）："+result.range.start+" 〜 "+result.range.end;
+    const schedule = buildScheduleText(offset);
+    document.getElementById("reportText").value = result.text+"\n\n"+schedule.text;
+    document.getElementById("reportRange").textContent =
+      "実績期間（日〜土）："+result.range.start+" 〜 "+result.range.end+
+      "／予定期間："+schedule.range.start+" 〜 "+schedule.range.end;
   }
 
   document.getElementById("copyReportBtn").addEventListener("click", function(){
