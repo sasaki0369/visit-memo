@@ -221,7 +221,6 @@
   }
   .visit-item .purpose{ font-size:12.5px; color:var(--ink-soft); margin-top:4px; }
   .visit-item .memo{ font-size:12.5px; color:var(--ink); margin-top:8px; padding-top:8px; border-top:1px dashed var(--line); white-space:pre-wrap; display:none; }
-  .visit-item .memo a{ color:var(--accent); text-decoration:underline; word-break:break-all; }
   .visit-item.open .memo{ display:block; }
   .visit-item .actions{ display:flex; gap:8px; margin-top:8px; display:none; }
   .visit-item.open .actions{ display:flex; }
@@ -315,6 +314,15 @@
 </style>
 </head>
 <body>
+<div id="loginGate" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#fdfaf4;border-radius:16px;max-width:340px;width:88%;padding:36px 24px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,0.2);">
+    <div class="stamp" style="margin:0 auto 16px;">訪</div>
+    <h3 style="margin:0 0 6px;">訪問録</h3>
+    <p style="font-size:12.5px;color:#7a7161;margin:0 0 24px;line-height:1.7;">ご本人のGoogleアカウントでログインしてください</p>
+    <button type="button" id="googleLoginBtn" style="width:100%;padding:12px;font-size:14px;border:none;border-radius:6px;background:#2e5c6b;color:#fff;cursor:pointer;">Googleでログイン</button>
+    <p id="loginError" style="font-size:11.5px;color:#8b3a3a;margin:14px 0 0;line-height:1.6;"></p>
+  </div>
+</div>
 <div class="wrap">
   <header>
     <h1>訪問録<span>拠点訪問・現場記録台帳</span></h1>
@@ -681,17 +689,37 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
   function startDataLoading(){
     if(firebaseConfigured){
+      const ALLOWED_EMAIL = 'sasaki0369@gmail.com';
       firebase.auth().onAuthStateChanged(function(user){
-        if(user && !firebaseReady){
-          firebaseReady = true;
-          attachFirebaseListeners();
+        if(user && user.email !== ALLOWED_EMAIL){
+          firebase.auth().signOut();
+          document.getElementById('loginError').textContent = 'このアプリは指定されたアカウントのみ利用できます。';
+          return;
+        }
+        if(user){
+          document.getElementById('loginGate').style.display = 'none';
+          if(!firebaseReady){
+            firebaseReady = true;
+            attachFirebaseListeners();
+          }
+        }else{
+          firebaseReady = false;
+          document.getElementById('loginGate').style.display = 'flex';
         }
       });
-      firebase.auth().signInAnonymously().catch(function(err){
+      firebase.auth().getRedirectResult().catch(function(err){
         console.error(err);
-        showConnMsg("Firebase認証に失敗しました（"+(err && err.code ? err.code : err)+"）。Firebase Console → Authentication → Sign-in method で「匿名」が有効になっているかご確認ください。このデバイスのみにデータが保存されています。");
-        try{ reportConfig = mergeReportConfig(JSON.parse(safeStorage.getItem(REPORT_LOCAL_KEY) || "null")); }catch(e){}
-        loadLocal();
+        document.getElementById('loginError').textContent = 'ログインに失敗しました（'+(err && err.code ? err.code : err)+'）';
+      });
+      document.getElementById('googleLoginBtn').addEventListener('click', function(){
+        const provider = new firebase.auth.GoogleAuthProvider();
+        document.getElementById('loginError').textContent = '';
+        document.getElementById('googleLoginBtn').textContent = 'ログイン画面へ移動しています…';
+        firebase.auth().signInWithRedirect(provider).catch(function(err){
+          console.error(err);
+          document.getElementById('loginError').textContent = 'ログインに失敗しました（'+(err && err.code ? err.code : err)+'）';
+          document.getElementById('googleLoginBtn').textContent = 'Googleでログイン';
+        });
       });
     }else{
       if(initError){
@@ -949,14 +977,13 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
           '<span class="pref-tag">'+escapeHtml(v.pref||"")+'</span>'+
         '</div>'+
         (v.purpose ? '<div class="purpose">目的：'+escapeHtml(v.purpose)+'</div>' : '')+
-        (v.memo ? '<div class="memo">'+linkifyMemo(v.memo)+'</div>' : '<div class="memo">（メモなし）</div>')+
+        (v.memo ? '<div class="memo">'+escapeHtml(v.memo)+'</div>' : '<div class="memo">（メモなし）</div>')+
         '<div class="actions">'+
           '<button class="btn secondary" data-act="edit">編集</button>'+
           '<button class="btn secondary" data-act="copyday">当日の訪問履歴をコピー</button>'+
           '<button class="btn danger" data-act="del">削除</button>'+
         '</div>';
       item.addEventListener("click", function(e){
-        if(e.target.tagName === "A") return; // リンクはブラウザ標準の遷移に任せる
         if(e.target.dataset.act === "edit"){ startEdit(v.id); return; }
         if(e.target.dataset.act === "del"){
           if(confirm("この記録を削除しますか？")) deleteVisit(v.id);
@@ -975,21 +1002,6 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
         item.classList.toggle("open");
       });
       listEl.appendChild(item);
-    });
-  }
-
-  function linkifyMemo(text){
-    const escaped = escapeHtml(text);
-    const trailingChars = ["。","、","）",")","」","』","，",",","！","？","!","?","."];
-    // 全角の句読点・括弧・記号はURLの一部になり得ないため、そこで区切る
-    return escaped.replace(/(https?:\/\/[^\s"'<>（）「」『』【】〈〉《》〔〕、。，！？：；・""'']+)/g, function(url){
-      let clean = url;
-      let trailing = "";
-      while(clean.length>0 && trailingChars.indexOf(clean.slice(-1))!==-1){
-        trailing = clean.slice(-1) + trailing;
-        clean = clean.slice(0, -1);
-      }
-      return '<a href="'+clean+'" target="_blank" rel="noopener noreferrer">'+clean+'</a>'+trailing;
     });
   }
 
@@ -1515,8 +1527,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   }
 
   // ---------- 週報 ----------
-  const REPORT_WEEK_LABELS = { "-2":"先々週", "-1":"前週", "0":"今週", "1":"来週", "2":"再来週" };
-  const WEEKDAY_LABELS = ["月曜","火曜","水曜","木曜","金曜"]; // 週の日曜起点から+1〜+5日
+  const REPORT_WEEK_LABELS = { "-2":"先々週", "-1":"前週", "0":"今週" };
 
   function getSundayOfWeek(d){
     const s = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -1595,39 +1606,10 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     return { text: header+"\n"+lines.join("\n"), range: range };
   }
 
-  function buildScheduleText(mainOffset){
-    const scheduleOffset = mainOffset + 1;
-    const range = getWeekRange(scheduleOffset);
-    const sunday = new Date(range.start+"T00:00:00");
-
-    const lines = WEEKDAY_LABELS.map(function(label, i){
-      const d = new Date(sunday);
-      d.setDate(d.getDate() + (i+1)); // 月曜=+1 ... 金曜=+5
-      const dateStr = fmtDate(d);
-      const dayVisits = Object.values(visits).filter(function(v){ return v.date===dateStr && v.place; });
-      dayVisits.sort(function(a,b){
-        const ao = (a.order!=null) ? a.order : Infinity;
-        const bo = (b.order!=null) ? b.order : Infinity;
-        if(ao!==bo) return ao-bo;
-        return (a.createdAt||0)-(b.createdAt||0);
-      });
-      const placesText = dayVisits.length ? dayVisits.map(function(v){ return v.place; }).join("→") : "予定なし";
-      return label+"：" +placesText;
-    });
-
-    const scheduleLabel = REPORT_WEEK_LABELS[String(scheduleOffset)] || "翌週";
-    const header = "■"+scheduleLabel+"の行動予定（あくまで予定）";
-    return { text: header+"\n"+lines.join("\n"), range: range };
-  }
-
   function renderWeeklyReport(){
-    const offset = parseInt(reportWeekSel.value, 10) || 0;
     const result = buildWeeklyReport();
-    const schedule = buildScheduleText(offset);
-    document.getElementById("reportText").value = result.text+"\n\n"+schedule.text;
-    document.getElementById("reportRange").textContent =
-      "実績期間（日〜土）："+result.range.start+" 〜 "+result.range.end+
-      "／予定期間："+schedule.range.start+" 〜 "+schedule.range.end;
+    document.getElementById("reportText").value = result.text;
+    document.getElementById("reportRange").textContent = "対象期間（日〜土）："+result.range.start+" 〜 "+result.range.end;
   }
 
   document.getElementById("copyReportBtn").addEventListener("click", function(){
