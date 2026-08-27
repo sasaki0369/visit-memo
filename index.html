@@ -763,6 +763,9 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     return prefOrderCache[0] || PREF_LIST[0];
   }
 
+  let prefManuallySet = false;
+  prefSel.addEventListener("change", function(){ prefManuallySet = true; });
+
   const categorySel = document.getElementById("f-category");
   CATEGORIES.forEach(function(c){
     const o = document.createElement("option");
@@ -890,6 +893,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     document.getElementById("formTitle").textContent = "新規訪問を記録";
     document.getElementById("cancelRow").style.display = "none";
     dateInput.value = todayStr();
+    prefManuallySet = false;
     prefSel.value = getDefaultPref();
     categorySel.value = CATEGORIES[0];
     document.getElementById("f-place").value = "";
@@ -1859,6 +1863,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   // ---------- Master render ----------
   function renderAll(){
     renderPrefOptions();
+    if(!editingId && !prefManuallySet) prefSel.value = getDefaultPref();
     renderFilterYearOptions();
     renderList();
     if(document.getElementById("tab-agg").classList.contains("active")) renderAggregation();
