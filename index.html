@@ -884,15 +884,15 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
     const data = { date: date, pref: pref, category: category, order: order, place: place, purpose: purpose, memo: memo, createdAt: (visits[id] && visits[id].createdAt) || Date.now() };
     upsertVisit(id, data);
-    resetForm();
+    resetForm(date);
   });
-  document.getElementById("cancelEditBtn").addEventListener("click", resetForm);
+  document.getElementById("cancelEditBtn").addEventListener("click", function(){ resetForm(); });
 
-  function resetForm(){
+  function resetForm(keepDate){
     editingId = null;
     document.getElementById("formTitle").textContent = "新規訪問を記録";
     document.getElementById("cancelRow").style.display = "none";
-    dateInput.value = todayStr();
+    dateInput.value = keepDate || todayStr();
     prefManuallySet = false;
     prefSel.value = getDefaultPref();
     categorySel.value = CATEGORIES[0];
