@@ -222,6 +222,43 @@
   .visit-item .purpose{ font-size:12.5px; color:var(--ink-soft); margin-top:4px; }
   .visit-item .memo{ font-size:12.5px; color:var(--ink); margin-top:8px; padding-top:8px; border-top:1px dashed var(--line); white-space:pre-wrap; display:none; }
   .visit-item .memo a{ color:var(--accent); text-decoration:underline; word-break:break-all; }
+
+  /* ---------- 画像貼り付け・サムネイル ---------- */
+  .image-paste-area{
+    min-height:44px;
+    border:1.5px dashed var(--line);
+    border-radius:8px;
+    padding:10px 12px;
+    font-size:13px;
+    color:var(--ink-soft);
+    background:#fff;
+    cursor:text;
+    outline:none;
+  }
+  .image-paste-area:empty::before{
+    content:"ここをタップしてコピーした画像を貼り付け（長押し→貼り付け）";
+  }
+  .image-paste-area:focus{ border-color:var(--accent); background:var(--accent-bg); }
+  .image-thumbs{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .img-thumb{ position:relative; width:64px; height:64px; border-radius:8px; overflow:hidden; border:1px solid var(--line); }
+  .img-thumb img{ width:100%; height:100%; object-fit:cover; cursor:pointer; display:block; }
+  .img-thumb .img-thumb-remove{
+    position:absolute; top:2px; right:2px; width:18px; height:18px; border-radius:50%;
+    background:rgba(0,0,0,0.55); color:#fff; border:none; font-size:12px; line-height:18px;
+    padding:0; cursor:pointer;
+  }
+  .record-images{ display:none; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .visit-item.open .record-images{ display:flex; }
+  .record-images img{
+    width:64px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--line); cursor:pointer;
+  }
+  .lightbox-overlay{
+    display:none; position:fixed; inset:0; background:rgba(20,18,14,0.88);
+    z-index:1000; align-items:center; justify-content:center; padding:24px;
+    cursor:zoom-out;
+  }
+  .lightbox-overlay.open{ display:flex; }
+  .lightbox-overlay img{ max-width:100%; max-height:100%; border-radius:6px; box-shadow:0 8px 30px rgba(0,0,0,0.4); }
   .visit-item.open .memo{ display:block; }
   .visit-item .actions{ display:flex; gap:8px; margin-top:8px; display:none; }
   .visit-item.open .actions{ display:flex; }
@@ -381,6 +418,11 @@
         <label>メモ</label>
         <textarea id="f-memo" placeholder="所感・次アクションなど"></textarea>
       </div>
+      <div class="field">
+        <label>画像（コピーした画像をここに貼り付け）</label>
+        <div class="image-paste-area" id="imagePasteArea" contenteditable="true"></div>
+        <div class="image-thumbs" id="imageThumbs"></div>
+      </div>
       <div class="btn-row">
         <button class="btn block" id="saveBtn">保存する</button>
       </div>
@@ -533,6 +575,10 @@
       </table>
     </div>
   </section>
+</div>
+
+<div class="lightbox-overlay" id="lightboxOverlay">
+  <img id="lightboxImg" src="" alt="">
 </div>
 
 <!-- ============================================================
@@ -858,6 +904,90 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     if(!editingId) suggestOrderForDate(dateInput.value);
   });
 
+  // ---------- 画像貼り付け・ライトボックス ----------
+  const imagePasteArea = document.getElementById("imagePasteArea");
+  const imageThumbs = document.getElementById("imageThumbs");
+  const lightboxOverlay = document.getElementById("lightboxOverlay");
+  const lightboxImg = document.getElementById("lightboxImg");
+  let currentImages = [];
+
+  function openLightbox(src){
+    lightboxImg.src = src;
+    lightboxOverlay.classList.add("open");
+  }
+  function closeLightbox(){
+    lightboxOverlay.classList.remove("open");
+    lightboxImg.src = "";
+  }
+  lightboxOverlay.addEventListener("click", closeLightbox);
+
+  function renderImageThumbs(){
+    imageThumbs.innerHTML = "";
+    currentImages.forEach(function(src, idx){
+      const wrap = document.createElement("div");
+      wrap.className = "img-thumb";
+      const img = document.createElement("img");
+      img.src = src;
+      img.addEventListener("click", function(){ openLightbox(src); });
+      const rm = document.createElement("button");
+      rm.type = "button";
+      rm.className = "img-thumb-remove";
+      rm.textContent = "×";
+      rm.addEventListener("click", function(){
+        currentImages.splice(idx, 1);
+        renderImageThumbs();
+      });
+      wrap.appendChild(img);
+      wrap.appendChild(rm);
+      imageThumbs.appendChild(wrap);
+    });
+  }
+
+  function compressImage(file, cb){
+    const reader = new FileReader();
+    reader.onload = function(e){
+      const img = new Image();
+      img.onload = function(){
+        const maxDim = 1280;
+        let w = img.width, h = img.height;
+        if(w>maxDim || h>maxDim){
+          if(w>h){ h = Math.round(h*maxDim/w); w = maxDim; }
+          else{ w = Math.round(w*maxDim/h); h = maxDim; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        cb(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      img.onerror = function(){ cb(null); };
+      img.src = e.target.result;
+    };
+    reader.onerror = function(){ cb(null); };
+    reader.readAsDataURL(file);
+  }
+
+  imagePasteArea.addEventListener("paste", function(e){
+    const cd = e.clipboardData || window.clipboardData;
+    if(!cd){ return; }
+    const items = cd.items || [];
+    let found = false;
+    for(let i=0;i<items.length;i++){
+      if(items[i].type && items[i].type.indexOf("image")===0){
+        found = true;
+        const file = items[i].getAsFile();
+        if(file){
+          compressImage(file, function(dataUrl){
+            if(dataUrl){ currentImages.push(dataUrl); renderImageThumbs(); }
+          });
+        }
+      }
+    }
+    if(found) e.preventDefault();
+    // 貼り付け先にテキストや画像がそのまま挿入されないよう、念のため中身を空にする
+    setTimeout(function(){ imagePasteArea.textContent = ""; }, 0);
+  });
+
   document.getElementById("saveBtn").addEventListener("click", function(){
     const date = dateInput.value;
     const pref = prefSel.value;
@@ -866,6 +996,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     const place = document.getElementById("f-place").value.trim();
     const purpose = document.getElementById("f-purpose").value.trim();
     const memo = document.getElementById("f-memo").value.trim();
+    const images = currentImages.slice();
     if(!date || !place){
       alert("訪問日と拠点名は必須です");
       return;
@@ -882,7 +1013,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     }
     if(!id) id = genId();
 
-    const data = { date: date, pref: pref, category: category, order: order, place: place, purpose: purpose, memo: memo, createdAt: (visits[id] && visits[id].createdAt) || Date.now() };
+    const data = { date: date, pref: pref, category: category, order: order, place: place, purpose: purpose, memo: memo, images: images, createdAt: (visits[id] && visits[id].createdAt) || Date.now() };
     upsertVisit(id, data);
     resetForm(date);
   });
@@ -899,6 +1030,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     document.getElementById("f-place").value = "";
     document.getElementById("f-purpose").value = "";
     document.getElementById("f-memo").value = "";
+    currentImages = [];
+    renderImageThumbs();
     suggestOrderForDate(dateInput.value);
   }
 
@@ -915,6 +1048,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     document.getElementById("f-place").value = v.place;
     document.getElementById("f-purpose").value = v.purpose||"";
     document.getElementById("f-memo").value = v.memo||"";
+    currentImages = (v.images || []).slice();
+    renderImageThumbs();
     window.scrollTo({top:0, behavior:"smooth"});
   }
 
@@ -974,6 +1109,9 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     arr.forEach(function(v){
       const item = document.createElement("div");
       item.className = "visit-item";
+      const imagesHtml = (v.images && v.images.length)
+        ? '<div class="record-images">'+v.images.map(function(src){ return '<img src="'+escapeHtml(src)+'">'; }).join("")+'</div>'
+        : '';
       item.innerHTML =
         '<div class="top">'+
           '<span class="date">'+escapeHtml(v.date||"")+'</span>'+
@@ -983,6 +1121,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
         '</div>'+
         (v.purpose ? '<div class="purpose">目的：'+escapeHtml(v.purpose)+'</div>' : '')+
         (v.memo ? '<div class="memo">'+linkifyMemo(v.memo)+'</div>' : '<div class="memo">（メモなし）</div>')+
+        imagesHtml+
         '<div class="actions">'+
           '<button class="btn secondary" data-act="edit">編集</button>'+
           '<button class="btn secondary" data-act="copyday">当日の訪問履歴をコピー</button>'+
@@ -990,6 +1129,10 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
         '</div>';
       item.addEventListener("click", function(e){
         if(e.target.tagName === "A") return; // リンクはブラウザ標準の遷移に任せる
+        if(e.target.tagName === "IMG" && e.target.closest(".record-images")){
+          openLightbox(e.target.src);
+          return;
+        }
         if(e.target.dataset.act === "edit"){ startEdit(v.id); return; }
         if(e.target.dataset.act === "del"){
           if(confirm("この記録を削除しますか？")) deleteVisit(v.id);
@@ -1226,10 +1369,13 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       const memos = [keep.v.memo].concat(rest.map(function(r){ return r.v.memo; }))
         .filter(function(s){ return s && s.trim(); });
       const uniq = function(arr){ return arr.filter(function(s,i){ return arr.indexOf(s)===i; }); };
+      const allImages = [].concat(keep.v.images||[]);
+      rest.forEach(function(r){ allImages.push.apply(allImages, r.v.images||[]); });
 
       const merged = Object.assign({}, keep.v, {
         purpose: uniq(purposes).join("／"),
-        memo: uniq(memos).join("\n---\n")
+        memo: uniq(memos).join("\n---\n"),
+        images: uniq(allImages)
       });
       plan.push({ keep: keep, remove: rest, merged: merged });
     });
