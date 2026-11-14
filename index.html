@@ -199,6 +199,7 @@
   .travel-head .copy-mini{ margin-left:auto; font-size:11px; padding:2px 8px; border:1px solid var(--accent); color:var(--accent); background:#fff; border-radius:6px; cursor:pointer; }
   .travel-route{ display:flex; flex-wrap:wrap; align-items:center; gap:2px 4px; font-size:13.5px; }
   .travel-route .st{ font-weight:700; }
+  .travel-route .stn{ font-weight:400; color:var(--accent-deep); }
   .travel-route .st.fallback{ color:var(--warn); font-weight:400; font-style:italic; }
   .travel-route .home{ color:var(--gold); font-weight:700; }
   .travel-route .arrow{ color:var(--ink-soft); font-size:11px; }
@@ -377,7 +378,7 @@
 </div>
 <div class="wrap">
   <header>
-    <h1>訪問録<span>拠点訪問・現場記録台帳</span></h1>
+    <h1>訪問録<span>訪問先・現場記録台帳</span></h1>
     <div class="stamp"><b>訪</b></div>
   </header>
 
@@ -414,8 +415,8 @@
         <select id="f-category"></select>
       </div>
       <div class="field">
-        <label>拠点名</label>
-        <input type="text" id="f-place" list="placeList" placeholder="例）〇〇市役所 / △△浄水場（過去の拠点は候補から選択）">
+        <label>訪問先</label>
+        <input type="text" id="f-place" list="placeList" placeholder="例）〇〇市役所 / △△浄水場（過去の訪問先は候補から選択）">
         <datalist id="placeList"></datalist>
       </div>
       <div class="row2">
@@ -463,7 +464,7 @@
       <div class="filter-row">
         <select id="filterYear"></select>
         <select id="filterCategory"></select>
-        <input type="text" id="filterKeyword" placeholder="拠点名・メモで検索">
+        <input type="text" id="filterKeyword" placeholder="訪問先・メモで検索">
       </div>
       <div class="visit-list" id="visitList"></div>
       <div class="empty" id="listEmpty" style="display:none;">記録がありません</div>
@@ -550,7 +551,7 @@
   <section class="tabpage" id="tab-travel">
     <div class="card">
       <h2>旅費申請（最寄り駅ベース）</h2>
-      <div class="agg-note">起点・終点は「つくし野」。日帰りは日ごと、宿泊出張は出張ごとにまとめます。初台のみの日も対象に含めます（除外はオプションで切替）。駅が未入力の訪問先は拠点名を赤字で表示します。</div>
+      <div class="agg-note">起点・終点は「つくし野」。日帰りは日ごと、宿泊出張は出張ごとにまとめます。初台のみの日も対象に含めます（除外はオプションで切替）。表記は「訪問先（最寄り駅）」です。駅が未入力の訪問先は赤字で表示します。</div>
       <div class="row2">
         <div class="field">
           <label>対象月</label>
@@ -1085,11 +1086,11 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     const memo = document.getElementById("f-memo").value.trim();
     const images = currentImages.slice();
     if(!date || !place){
-      alert("訪問日と拠点名は必須です");
+      alert("訪問日と訪問先は必須です");
       return;
     }
 
-    // 日付・分類・拠点が一致する既存レコードがあれば、新規作成せずそちらへ統合する
+    // 日付・分類・訪問先が一致する既存レコードがあれば、新規作成せずそちらへ統合する
     let id = editingId;
     if(!id){
       const dup = Object.entries(visits).find(function(e){
@@ -1343,7 +1344,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   }
 
   // ---------- CSV Export / Import ----------
-  const CSV_HEADERS = ["id","訪問日","訪問順","都道府県","分類","拠点名","最寄り駅","宿泊数","目的","メモ","登録日時"];
+  const CSV_HEADERS = ["id","訪問日","訪問順","都道府県","分類","訪問先","最寄り駅","宿泊数","目的","メモ","登録日時"];
 
   function csvField(val){
     const s = (val===undefined || val===null) ? "" : String(val);
@@ -1414,7 +1415,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       const idxOrder = header.indexOf("訪問順");
       const idxPref = header.indexOf("都道府県");
       const idxCategory = header.indexOf("分類");
-      const idxPlace = header.indexOf("拠点名");
+      const idxPlace = header.indexOf("訪問先")!==-1 ? header.indexOf("訪問先") : header.indexOf("拠点名");
       const idxStation = header.indexOf("最寄り駅");
       const idxNights = header.indexOf("宿泊数");
       const idxPurpose = header.indexOf("目的");
@@ -1422,7 +1423,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       const idxCreated = header.indexOf("登録日時");
 
       if(idxDate===-1 || idxPlace===-1){
-        showImportNote("列見出しが認識できませんでした。エクスポートしたCSVの形式（id,訪問日,訪問順,都道府県,分類,拠点名,最寄り駅,宿泊数,目的,メモ,登録日時）でご用意ください。");
+        showImportNote("列見出しが認識できませんでした。エクスポートしたCSVの形式（id,訪問日,訪問順,都道府県,分類,訪問先,最寄り駅,宿泊数,目的,メモ,登録日時）でご用意ください。");
         return;
       }
 
@@ -1451,7 +1452,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       }
 
       if(okCount === 0){
-        showImportNote("有効な行がありませんでした（訪問日はYYYY-MM-DD形式、拠点名は必須です）。");
+        showImportNote("有効な行がありませんでした（訪問日はYYYY-MM-DD形式、訪問先は必須です）。");
         return;
       }
 
@@ -2021,7 +2022,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
       const tdMode = document.createElement("td");
       const sel = document.createElement("select");
-      [["none","なし"],["weekly","当週の拠点名"],["cumulative","累計の内訳"],["both","両方"]].forEach(function(opt){
+      [["none","なし"],["weekly","当週の訪問先"],["cumulative","累計の内訳"],["both","両方"]].forEach(function(opt){
         const o = document.createElement("option");
         o.value = opt[0]; o.textContent = opt[1];
         if(opt[0]===mode) o.selected = true;
@@ -2194,7 +2195,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     const dayNo = Math.round((new Date(v.date+"T00:00:00")-new Date(trip.start+"T00:00:00"))/86400000)+1;
     return '<span class="tag-night cont">宿泊出張'+dayNo+'日目</span>';
   }
-  // 拠点名→最寄り駅の対応（拠点ごとに最新の駅入力を採用）
+  // 訪問先→最寄り駅の対応（訪問先ごとに最新の駅入力を採用）
   function buildPlaceStationMap(){
     const map = {}, latest = {};
     Object.values(visits).forEach(function(v){
@@ -2301,10 +2302,10 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     unit.days.forEach(function(day){
       day.visits.forEach(function(v){
         const st = v.station || placeStationMap[v.place] || "";
-        const name = st || v.place;
+        const name = v.place;
         const last = stops[stops.length-1];
-        if(last && last.name===name && last.date===day.date) return;
-        stops.push({ name:name, fallback:!st, date:day.date });
+        if(last && last.name===name && last.station===st && last.date===day.date) return;
+        stops.push({ name:name, station:st, label: st ? name+"（"+st+"）" : name, fallback:!st, date:day.date });
       });
     });
     return stops;
@@ -2317,7 +2318,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     return u.type==="trip" ? fmtMD(u.start)+"〜"+fmtMD(u.end)+"　🌙"+u.nights+"泊" : fmtMD(u.start);
   }
   function unitText(u){
-    const names = buildRouteStops(u).map(function(s){ return s.name; });
+    const names = buildRouteStops(u).map(function(s){ return s.label; });
     return unitLabel(u)+"：" + [HOME_STATION].concat(names, [HOME_STATION]).join("→");
   }
   function travelUnitsForMonth(){
@@ -2357,7 +2358,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
           html += '<span class="dmark">'+escapeHtml(fmtMD(s.date))+'</span>';
         }
         lastDate = s.date;
-        html += '<span class="st'+(s.fallback?' fallback':'')+'">'+escapeHtml(s.name)+'</span>';
+        html += '<span class="st'+(s.fallback?' fallback':'')+'">'+escapeHtml(s.name)+(s.station ? '<span class="stn">（'+escapeHtml(s.station)+'）</span>' : '')+'</span>';
       });
       html += '<span class="arrow">→</span><span class="home">'+HOME_STATION+'</span></div>';
       row.innerHTML = html;
