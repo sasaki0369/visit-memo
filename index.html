@@ -199,6 +199,7 @@
   .travel-head .copy-mini{ margin-left:auto; font-size:11px; padding:2px 8px; border:1px solid var(--accent); color:var(--accent); background:#fff; border-radius:6px; cursor:pointer; }
   .travel-route{ display:flex; flex-wrap:wrap; align-items:center; gap:2px 4px; font-size:13.5px; }
   .travel-route .st{ font-weight:700; }
+  .zen-tag{ font-size:10px; font-weight:700; color:#fff; background:var(--gold); border-radius:4px; padding:0 4px; margin-right:3px; }
   .travel-route .stn{ font-weight:400; color:var(--accent-deep); }
   .travel-route .st.fallback{ color:var(--warn); font-weight:400; font-style:italic; }
   .travel-route .home{ color:var(--gold); font-weight:700; }
@@ -665,6 +666,9 @@
 const PREF_LIST = ["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
 const CATEGORIES = ["初台","事業部","支店","集約組織","協力会社","Ｇ会社","社外","イベント","現場"];
 const CATEGORIES_NO_HQ = CATEGORIES.filter(function(c){ return c !== "初台"; });
+// 前泊：旅費申請用の移動日の記録。訪問先としては集計・地図・週報に含めない
+const ZENPAKU = "前泊";
+const FORM_CATEGORIES = CATEGORIES.concat([ZENPAKU]);
 const DEFAULT_REPORT_CONFIG = {
   startDate: "2026-04-01",
   baselineYear: "2025",
@@ -846,7 +850,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   function renderPrefOptions(){
     const counts = {};
     PREF_LIST.forEach(function(p){ counts[p] = 0; });
-    Object.values(visits).forEach(function(v){ if(v.pref && counts.hasOwnProperty(v.pref)) counts[v.pref]++; });
+    Object.values(visits).forEach(function(v){ if(v.category!==ZENPAKU && v.pref && counts.hasOwnProperty(v.pref)) counts[v.pref]++; });
 
     const withVisits = PREF_LIST.filter(function(p){ return counts[p]>0; })
       .sort(function(a,b){ return counts[b]-counts[a]; });
@@ -873,7 +877,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   prefSel.addEventListener("change", function(){ prefManuallySet = true; });
 
   const categorySel = document.getElementById("f-category");
-  CATEGORIES.forEach(function(c){
+  FORM_CATEGORIES.forEach(function(c){
     const o = document.createElement("option");
     o.value = c; o.textContent = c;
     categorySel.appendChild(o);
@@ -884,7 +888,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     const optAll = document.createElement("option");
     optAll.value = ""; optAll.textContent = "全分類";
     filterCategorySel.appendChild(optAll);
-    CATEGORIES.forEach(function(c){
+    FORM_CATEGORIES.forEach(function(c){
       const o = document.createElement("option");
       o.value = c; o.textContent = c;
       filterCategorySel.appendChild(o);
@@ -983,7 +987,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   })();
 
   function suggestOrderForDate(date){
-    const countSameDay = Object.values(visits).filter(function(v){ return v.date===date; }).length;
+    const countSameDay = Object.values(visits).filter(function(v){ return v.date===date && v.category!==ZENPAKU; }).length;
     orderCtl.set(countSameDay + 1);
   }
   dateInput.addEventListener("change", function(){
@@ -1293,7 +1297,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   }
 
   function buildDayHistoryText(date){
-    const sameDay = Object.values(visits).filter(function(v){ return v.date===date && v.place; });
+    const sameDay = Object.values(visits).filter(function(v){ return v.date===date && v.place && v.category!==ZENPAKU; });
     sameDay.sort(function(a,b){
       const ao = (a.order!=null) ? a.order : Infinity;
       const bo = (b.order!=null) ? b.order : Infinity;
@@ -1767,7 +1771,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   }
 
   function renderAggregation(){
-    const arr = Object.values(visits).filter(function(v){ return !!v.date && v.category && v.category !== "初台"; });
+    const arr = Object.values(visits).filter(function(v){ return !!v.date && v.category && v.category !== "初台" && v.category !== ZENPAKU; });
 
     const fySet = new Set();
     Object.values(visits).forEach(function(v){ if(v.date) fySet.add(getFiscalYear(v.date)); });
@@ -1932,7 +1936,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       const d = new Date(sunday);
       d.setDate(d.getDate() + (i+1)); // 月曜=+1 ... 金曜=+5
       const dateStr = fmtDate(d);
-      const dayVisits = Object.values(visits).filter(function(v){ return v.date===dateStr && v.place; });
+      const dayVisits = Object.values(visits).filter(function(v){ return v.date===dateStr && v.place && v.category!==ZENPAKU; });
       dayVisits.sort(function(a,b){
         const ao = (a.order!=null) ? a.order : Infinity;
         const bo = (b.order!=null) ? b.order : Infinity;
@@ -2046,7 +2050,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     const counts = {};
     PREF_LIST.forEach(function(p){ counts[p]=0; });
     Object.values(visits).forEach(function(v){
-      if(v.category==="初台") return;
+      if(v.category==="初台" || v.category===ZENPAKU) return;
       if(v.pref && counts.hasOwnProperty(v.pref)) counts[v.pref]++;
     });
     return counts;
@@ -2167,7 +2171,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   function computeTrips(){
     const byDate = {};
     Object.values(visits).forEach(function(v){
-      if(v && v.date && (v.nights||0)>=1) byDate[v.date] = Math.max(byDate[v.date]||0, v.nights);
+      const n = v ? Math.max(v.nights||0, v.category===ZENPAKU ? 1 : 0) : 0;
+      if(v && v.date && n>=1) byDate[v.date] = Math.max(byDate[v.date]||0, n);
     });
     const trips = [];
     Object.keys(byDate).sort().forEach(function(d){
@@ -2305,7 +2310,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
         const name = v.place;
         const last = stops[stops.length-1];
         if(last && last.name===name && last.station===st && last.date===day.date) return;
-        stops.push({ name:name, station:st, label: st ? name+"（"+st+"）" : name, fallback:!st, date:day.date });
+        const zen = v.category===ZENPAKU;
+        stops.push({ name:name, station:st, zen:zen, label: (zen ? "【前泊移動】" : "")+(st ? name+"（"+st+"）" : name), fallback:!st, date:day.date });
       });
     });
     return stops;
@@ -2358,7 +2364,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
           html += '<span class="dmark">'+escapeHtml(fmtMD(s.date))+'</span>';
         }
         lastDate = s.date;
-        html += '<span class="st'+(s.fallback?' fallback':'')+'">'+escapeHtml(s.name)+(s.station ? '<span class="stn">（'+escapeHtml(s.station)+'）</span>' : '')+'</span>';
+        html += '<span class="st'+(s.fallback?' fallback':'')+'">'+(s.zen ? '<span class="zen-tag">前泊移動</span>' : '')+escapeHtml(s.name)+(s.station ? '<span class="stn">（'+escapeHtml(s.station)+'）</span>' : '')+'</span>';
       });
       html += '<span class="arrow">→</span><span class="home">'+HOME_STATION+'</span></div>';
       row.innerHTML = html;
