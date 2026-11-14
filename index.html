@@ -190,6 +190,20 @@
     touch-action:manipulation;
   }
   .order-btn:active{ background:var(--accent-bg); }
+  .tag-night{ font-size:11px; font-weight:700; color:#fff; background:#5B5F97; border-radius:20px; padding:2px 9px; white-space:nowrap; }
+  .tag-night.cont{ background:#8C90C4; }
+  .tag-station{ font-size:11px; color:var(--ink-soft); border:1px solid var(--line); border-radius:20px; padding:1px 8px; white-space:nowrap; }
+  .travel-row{ border:1px solid var(--line); border-radius:8px; padding:6px 8px; margin-bottom:6px; background:#fff; }
+  .travel-row.trip{ border-left:4px solid #5B5F97; background:#F6F6FB; }
+  .travel-head{ display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--accent-deep); margin-bottom:3px; }
+  .travel-head .copy-mini{ margin-left:auto; font-size:11px; padding:2px 8px; border:1px solid var(--accent); color:var(--accent); background:#fff; border-radius:6px; cursor:pointer; }
+  .travel-route{ display:flex; flex-wrap:wrap; align-items:center; gap:2px 4px; font-size:13.5px; }
+  .travel-route .st{ font-weight:700; }
+  .travel-route .st.fallback{ color:var(--warn); font-weight:400; font-style:italic; }
+  .travel-route .home{ color:var(--gold); font-weight:700; }
+  .travel-route .arrow{ color:var(--ink-soft); font-size:11px; }
+  .travel-route .dmark{ font-size:10px; color:#fff; background:#8C90C4; border-radius:4px; padding:0 4px; }
+  .travel-sum{ font-size:12.5px; color:var(--ink-soft); margin:6px 0 10px; }
 
   .btn{
     display:inline-flex; align-items:center; justify-content:center;
@@ -374,6 +388,7 @@
     <button class="tab-btn" data-tab="agg">集計</button>
     <button class="tab-btn" data-tab="map">地図</button>
     <button class="tab-btn" data-tab="report">週報</button>
+    <button class="tab-btn" data-tab="travel">旅費</button>
   </nav>
 
   <!-- ============ 記録タブ ============ -->
@@ -401,6 +416,17 @@
       <div class="field">
         <label>拠点名</label>
         <input type="text" id="f-place" placeholder="例）〇〇市役所 / △△浄水場">
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>最寄り駅</label>
+          <input type="text" id="f-station" list="stationList" placeholder="例）虎ノ門">
+          <datalist id="stationList"></datalist>
+        </div>
+        <div class="field">
+          <label>宿泊数（泊）</label>
+          <button type="button" id="f-nights-btn" class="order-btn" data-value="0">0</button>
+        </div>
       </div>
       <div class="field">
         <label>目的</label>
@@ -498,6 +524,17 @@
     </div>
 
     <div class="card">
+      <h2>宿泊出張（<span id="nYearLbl"></span>年度・月別）</h2>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="num" id="statTripCount">0</div><div class="lbl">宿泊出張回数</div></div>
+        <div class="stat-box"><div class="num" id="statNightCount">0</div><div class="lbl">宿泊数（泊）</div></div>
+        <div class="stat-box"><div class="num" id="statTripAvg">0</div><div class="lbl">月平均出張回数</div></div>
+      </div>
+      <div class="table-scroll"><table class="agg cross-tab" id="tblTrip"><thead></thead><tbody></tbody></table></div>
+      <div class="agg-note" style="margin-top:8px; margin-bottom:0;">※出発日の月に計上。連続する宿泊は1回の出張として数えます</div>
+    </div>
+
+    <div class="card">
       <h2>四半期別集計（<span id="qYearLbl"></span>年度・分類別）</h2>
       <div class="table-scroll"><table class="agg cross-tab" id="tblQuarter"><thead></thead><tbody></tbody></table></div>
     </div>
@@ -505,6 +542,27 @@
     <div class="card">
       <h2>週別集計（<span id="wYearLbl"></span>年度・分類別）</h2>
       <div class="table-scroll"><table class="agg cross-tab" id="tblWeek"><thead></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ============ 旅費申請タブ ============ -->
+  <section class="tabpage" id="tab-travel">
+    <div class="card">
+      <h2>旅費申請（最寄り駅ベース）</h2>
+      <div class="agg-note">起点・終点は「つくし野」。日帰りは日ごと、宿泊出張は出張ごとにまとめます。駅が未入力の訪問先は拠点名を赤字で表示します。</div>
+      <div class="row2">
+        <div class="field">
+          <label>対象月</label>
+          <select id="travelMonth"></select>
+        </div>
+        <div class="field">
+          <label>オプション</label>
+          <label style="font-weight:400;display:flex;gap:6px;align-items:center;margin-top:8px;"><input type="checkbox" id="travelSkipHq" checked> 初台のみの日を除く</label>
+        </div>
+      </div>
+      <div class="btn-row"><button class="btn secondary block" id="travelCopyAll">この月の全件をコピー</button></div>
+      <div class="travel-sum" id="travelSum"></div>
+      <div id="travelList"></div>
     </div>
   </section>
 
@@ -841,6 +899,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       document.getElementById("tab-"+btn.dataset.tab).classList.add("active");
       if(btn.dataset.tab === "agg") renderAggregation();
       if(btn.dataset.tab === "map") renderMap();
+      if(btn.dataset.tab === "travel") renderTravel();
       if(btn.dataset.tab === "report"){ renderReportSettings(); renderWeeklyReport(); }
     });
   });
@@ -894,6 +953,31 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     });
 
     return { get: getValue, set: setValue };
+  })();
+
+  // 宿泊数：タップで+1、長押しで0に戻る
+  const nightsCtl = (function(){
+    const btn = document.getElementById("f-nights-btn");
+    let pressTimer = null, longPressTriggered = false;
+    function setValue(v){ const n = Math.max(0, parseInt(v,10) || 0); btn.textContent = n; btn.dataset.value = n; }
+    function getValue(){ return parseInt(btn.dataset.value, 10) || 0; }
+    function clearTimer(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer = null; } }
+    btn.addEventListener("pointerdown", function(){
+      longPressTriggered = false; clearTimer();
+      pressTimer = setTimeout(function(){
+        longPressTriggered = true; setValue(0);
+        if(navigator.vibrate) navigator.vibrate(15);
+      }, 600);
+    });
+    btn.addEventListener("pointerup", clearTimer);
+    btn.addEventListener("pointerleave", clearTimer);
+    btn.addEventListener("pointercancel", clearTimer);
+    btn.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+    btn.addEventListener("click", function(){
+      if(longPressTriggered){ longPressTriggered = false; return; }
+      setValue(getValue()+1);
+    });
+    return { get:getValue, set:setValue };
   })();
 
   function suggestOrderForDate(date){
@@ -994,6 +1078,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     const category = categorySel.value;
     const order = orderCtl.get();
     const place = document.getElementById("f-place").value.trim();
+    const station = document.getElementById("f-station").value.trim();
+    const nights = nightsCtl.get();
     const purpose = document.getElementById("f-purpose").value.trim();
     const memo = document.getElementById("f-memo").value.trim();
     const images = currentImages.slice();
@@ -1013,7 +1099,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     }
     if(!id) id = genId();
 
-    const data = { date: date, pref: pref, category: category, order: order, place: place, purpose: purpose, memo: memo, images: images, createdAt: (visits[id] && visits[id].createdAt) || Date.now() };
+    const data = { date: date, pref: pref, category: category, order: order, place: place, station: station, nights: nights, purpose: purpose, memo: memo, images: images, createdAt: (visits[id] && visits[id].createdAt) || Date.now() };
     upsertVisit(id, data);
     resetForm(date);
   });
@@ -1028,6 +1114,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     prefSel.value = getDefaultPref();
     categorySel.value = CATEGORIES[0];
     document.getElementById("f-place").value = "";
+    document.getElementById("f-station").value = "";
+    nightsCtl.set(0);
     document.getElementById("f-purpose").value = "";
     document.getElementById("f-memo").value = "";
     currentImages = [];
@@ -1046,6 +1134,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     prefSel.value = v.pref;
     categorySel.value = v.category || CATEGORIES[0];
     document.getElementById("f-place").value = v.place;
+    document.getElementById("f-station").value = v.station||"";
+    nightsCtl.set(v.nights||0);
     document.getElementById("f-purpose").value = v.purpose||"";
     document.getElementById("f-memo").value = v.memo||"";
     currentImages = (v.images || []).slice();
@@ -1118,6 +1208,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
           '<span class="place">'+escapeHtml(v.place||"")+'</span>'+
           (v.category ? '<span class="cat-tag">'+escapeHtml(v.category)+'</span>' : '')+
           '<span class="pref-tag">'+escapeHtml(v.pref||"")+'</span>'+
+          (v.station ? '<span class="tag-station">🚉'+escapeHtml(v.station)+'</span>' : '')+
+          nightTagHtml(v)+
         '</div>'+
         (v.purpose ? '<div class="purpose">目的：'+escapeHtml(v.purpose)+'</div>' : '')+
         (v.memo ? '<div class="memo">'+linkifyMemo(v.memo)+'</div>' : '<div class="memo">（メモなし）</div>')+
@@ -1206,7 +1298,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   }
 
   // ---------- CSV Export / Import ----------
-  const CSV_HEADERS = ["id","訪問日","訪問順","都道府県","分類","拠点名","目的","メモ","登録日時"];
+  const CSV_HEADERS = ["id","訪問日","訪問順","都道府県","分類","拠点名","最寄り駅","宿泊数","目的","メモ","登録日時"];
 
   function csvField(val){
     const s = (val===undefined || val===null) ? "" : String(val);
@@ -1221,6 +1313,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     arr.forEach(function(v){
       lines.push([
         csvField(v.id), csvField(v.date), csvField(v.order!=null ? v.order : ""), csvField(v.pref), csvField(v.category), csvField(v.place),
+        csvField(v.station||""), csvField(v.nights||0),
         csvField(v.purpose), csvField(v.memo), csvField(v.createdAt||"")
       ].join(","));
     });
@@ -1277,12 +1370,14 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       const idxPref = header.indexOf("都道府県");
       const idxCategory = header.indexOf("分類");
       const idxPlace = header.indexOf("拠点名");
+      const idxStation = header.indexOf("最寄り駅");
+      const idxNights = header.indexOf("宿泊数");
       const idxPurpose = header.indexOf("目的");
       const idxMemo = header.indexOf("メモ");
       const idxCreated = header.indexOf("登録日時");
 
       if(idxDate===-1 || idxPlace===-1){
-        showImportNote("列見出しが認識できませんでした。エクスポートしたCSVの形式（id,訪問日,訪問順,都道府県,分類,拠点名,目的,メモ,登録日時）でご用意ください。");
+        showImportNote("列見出しが認識できませんでした。エクスポートしたCSVの形式（id,訪問日,訪問順,都道府県,分類,拠点名,最寄り駅,宿泊数,目的,メモ,登録日時）でご用意ください。");
         return;
       }
 
@@ -1298,12 +1393,15 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
         const category = idxCategory!==-1 ? (r[idxCategory]||"").trim() : "";
         const orderRaw = idxOrder!==-1 ? (r[idxOrder]||"").trim() : "";
         const order = orderRaw && !isNaN(Number(orderRaw)) ? parseInt(orderRaw,10) : null;
+        const station = idxStation!==-1 ? (r[idxStation]||"").trim() : "";
+        const nightsRaw = idxNights!==-1 ? (r[idxNights]||"").trim() : "";
+        const nights = nightsRaw && !isNaN(Number(nightsRaw)) ? Math.max(0, parseInt(nightsRaw,10)) : 0;
         const purpose = idxPurpose!==-1 ? (r[idxPurpose]||"").trim() : "";
         const memo = idxMemo!==-1 ? (r[idxMemo]||"").trim() : "";
         const createdRaw = idxCreated!==-1 ? (r[idxCreated]||"").trim() : "";
         const createdAt = createdRaw && !isNaN(Number(createdRaw)) ? Number(createdRaw) : Date.now();
         const id = (idxId!==-1 && r[idxId] && r[idxId].trim()) ? r[idxId].trim() : genId();
-        updates[id] = { date: date, pref: pref, category: category, order: order, place: place, purpose: purpose, memo: memo, createdAt: createdAt };
+        updates[id] = { date: date, pref: pref, category: category, order: order, place: place, station: station, nights: nights, purpose: purpose, memo: memo, createdAt: createdAt };
         okCount++;
       }
 
@@ -1373,6 +1471,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       rest.forEach(function(r){ allImages.push.apply(allImages, r.v.images||[]); });
 
       const merged = Object.assign({}, keep.v, {
+        station: keep.v.station || (rest.map(function(r){ return r.v.station; }).filter(Boolean)[0] || ""),
+        nights: Math.max.apply(null, [keep.v.nights||0].concat(rest.map(function(r){ return r.v.nights||0; }))),
         purpose: uniq(purposes).join("／"),
         memo: uniq(memos).join("\n---\n"),
         images: uniq(allImages)
@@ -1654,6 +1754,9 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
     // ---- 分類別集計（月別クロス集計、初台は参考行） ----
     renderCategoryMonthTable(range);
+
+    document.getElementById("nYearLbl").textContent = selFy;
+    renderTripAgg(selFy, range);
 
     // ---- 四半期別（年度基準：Q1=4-6月,Q2=7-9月,Q3=10-12月,Q4=1-3月） ----
     const quarterGroups = [1,2,3,4].map(function(q){
@@ -2007,11 +2110,204 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   }
 
   // ---------- Master render ----------
+  // ---------- 宿泊出張・最寄り駅・旅費申請 ----------
+  const HOME_STATION = "つくし野";
+  function addDaysStr(dateStr, n){
+    const d = new Date(dateStr+"T00:00:00");
+    d.setDate(d.getDate()+n);
+    return fmtDate(d);
+  }
+  // 宿泊出張の一覧：出発日(nights>=1の最大値)から出発日+nights日まで。重複・連続は1つにまとめる
+  function computeTrips(){
+    const byDate = {};
+    Object.values(visits).forEach(function(v){
+      if(v && v.date && (v.nights||0)>=1) byDate[v.date] = Math.max(byDate[v.date]||0, v.nights);
+    });
+    const trips = [];
+    Object.keys(byDate).sort().forEach(function(d){
+      const end = addDaysStr(d, byDate[d]);
+      const last = trips[trips.length-1];
+      if(last && d<=last.end){
+        if(end>last.end) last.end = end;
+        last.nights = Math.round((new Date(last.end+"T00:00:00")-new Date(last.start+"T00:00:00"))/86400000);
+      }else{
+        trips.push({ start:d, end:end, nights:byDate[d] });
+      }
+    });
+    return trips;
+  }
+  function findTripForDate(date, trips){
+    return (trips||computeTrips()).find(function(t){ return date>=t.start && date<=t.end; }) || null;
+  }
+  function nightTagHtml(v){
+    if(!v.date) return "";
+    const trip = findTripForDate(v.date);
+    if(!trip) return "";
+    if(v.date===trip.start){
+      return '<span class="tag-night">🌙'+trip.nights+'泊</span>';
+    }
+    const dayNo = Math.round((new Date(v.date+"T00:00:00")-new Date(trip.start+"T00:00:00"))/86400000)+1;
+    return '<span class="tag-night cont">宿泊出張'+dayNo+'日目</span>';
+  }
+  function renderStationList(){
+    const counts = {};
+    Object.values(visits).forEach(function(v){ if(v && v.station) counts[v.station] = (counts[v.station]||0)+1; });
+    const dl = document.getElementById("stationList");
+    dl.innerHTML = "";
+    Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a]; }).forEach(function(st){
+      const o = document.createElement("option"); o.value = st; dl.appendChild(o);
+    });
+  }
+  function renderTripAgg(selFy, range){
+    const trips = computeTrips().filter(function(t){ return t.start>=range.start && t.start<=range.end; });
+    const tripCounts = new Array(12).fill(0), nightCounts = new Array(12).fill(0);
+    trips.forEach(function(t){
+      const i = fiscalMonthIndex(t.start);
+      tripCounts[i]++; nightCounts[i]+=t.nights;
+    });
+    const tripTotal = tripCounts.reduce(function(a,b){return a+b;},0);
+    const nightTotal = nightCounts.reduce(function(a,b){return a+b;},0);
+    const nowFy = getFiscalYear(todayStr());
+    let monthsElapsed;
+    if(selFy===nowFy) monthsElapsed = fiscalMonthIndex(todayStr())+1;
+    else if(selFy<nowFy) monthsElapsed = 12;
+    else monthsElapsed = 1;
+    document.getElementById("statTripCount").textContent = tripTotal;
+    document.getElementById("statNightCount").textContent = nightTotal;
+    document.getElementById("statTripAvg").textContent = (tripTotal/monthsElapsed).toFixed(2);
+    const table = document.getElementById("tblTrip");
+    const thead = table.querySelector("thead"), tbody = table.querySelector("tbody");
+    thead.innerHTML = "<tr><th></th>"+FISCAL_MONTH_LABELS.map(function(m){return "<th>"+m+"</th>";}).join("")+"<th class='total'>合計</th></tr>";
+    tbody.innerHTML = "<tr><td>出張回数</td>"+tripCounts.map(function(n){return "<td>"+n+"</td>";}).join("")+"<td class='total'>"+tripTotal+"</td></tr>"+
+      "<tr><td>宿泊数</td>"+nightCounts.map(function(n){return "<td>"+n+"</td>";}).join("")+"<td class='total'>"+nightTotal+"</td></tr>";
+  }
+
+  // 旅費申請：日帰りは日ごと、宿泊出張は出張ごとに1行
+  function sortDayVisits(arr){
+    return arr.slice().sort(function(a,b){
+      const ao = (a.order!=null) ? a.order : Infinity;
+      const bo = (b.order!=null) ? b.order : Infinity;
+      if(ao!==bo) return ao-bo;
+      return (a.createdAt||0)-(b.createdAt||0);
+    });
+  }
+  function buildTravelUnits(skipHqOnly){
+    const trips = computeTrips();
+    const byDate = {};
+    Object.values(visits).forEach(function(v){
+      if(!v || !v.date || !v.place) return;
+      (byDate[v.date] = byDate[v.date] || []).push(v);
+    });
+    const units = [];
+    Object.keys(byDate).sort().forEach(function(d){
+      const trip = findTripForDate(d, trips);
+      if(trip) return;
+      const list = sortDayVisits(byDate[d]);
+      if(skipHqOnly && list.every(function(v){ return v.category==="初台"; })) return;
+      units.push({ type:"day", start:d, end:d, days:[{date:d, visits:list}] });
+    });
+    trips.forEach(function(t){
+      const days = [];
+      for(let d=t.start; d<=t.end; d=addDaysStr(d,1)){
+        if(byDate[d]) days.push({date:d, visits:sortDayVisits(byDate[d])});
+      }
+      units.push({ type:"trip", start:t.start, end:t.end, nights:t.nights, days:days });
+    });
+    units.sort(function(a,b){ return a.start.localeCompare(b.start); });
+    return units;
+  }
+  // 経路：[{name, fallback, date}] を返す（同じ駅の連続は1つにまとめる）
+  function buildRouteStops(unit){
+    const stops = [];
+    unit.days.forEach(function(day){
+      day.visits.forEach(function(v){
+        const name = v.station || v.place;
+        const last = stops[stops.length-1];
+        if(last && last.name===name && last.date===day.date) return;
+        stops.push({ name:name, fallback:!v.station, date:day.date });
+      });
+    });
+    return stops;
+  }
+  function fmtMD(dateStr){
+    const d = new Date(dateStr+"T00:00:00");
+    return (d.getMonth()+1)+"/"+d.getDate()+"("+"日月火水木金土"[d.getDay()]+")";
+  }
+  function unitLabel(u){
+    return u.type==="trip" ? fmtMD(u.start)+"〜"+fmtMD(u.end)+"　🌙"+u.nights+"泊" : fmtMD(u.start);
+  }
+  function unitText(u){
+    const names = buildRouteStops(u).map(function(s){ return s.name; });
+    return unitLabel(u)+"：" + [HOME_STATION].concat(names, [HOME_STATION]).join("→");
+  }
+  function travelUnitsForMonth(){
+    const sel = document.getElementById("travelMonth").value;
+    const skip = document.getElementById("travelSkipHq").checked;
+    return buildTravelUnits(skip).filter(function(u){ return !sel || u.start.slice(0,7)===sel; });
+  }
+  function renderTravel(){
+    const monthSel = document.getElementById("travelMonth");
+    const cur = monthSel.value;
+    const months = new Set();
+    Object.values(visits).forEach(function(v){ if(v && v.date) months.add(v.date.slice(0,7)); });
+    months.add(todayStr().slice(0,7));
+    monthSel.innerHTML = "";
+    Array.from(months).sort().reverse().forEach(function(m){
+      const o = document.createElement("option");
+      o.value = m; o.textContent = m.slice(0,4)+"年"+parseInt(m.slice(5),10)+"月";
+      monthSel.appendChild(o);
+    });
+    if(cur && months.has(cur)) monthSel.value = cur;
+    const units = travelUnitsForMonth();
+    const listEl = document.getElementById("travelList");
+    listEl.innerHTML = "";
+    const tripN = units.filter(function(u){ return u.type==="trip"; }).length;
+    document.getElementById("travelSum").textContent = units.length===0 ? "この月の申請対象はありません" :
+      "計"+units.length+"件（日帰り"+(units.length-tripN)+"件・宿泊出張"+tripN+"件）";
+    units.forEach(function(u){
+      const row = document.createElement("div");
+      row.className = "travel-row"+(u.type==="trip" ? " trip" : "");
+      const stops = buildRouteStops(u);
+      let html = '<div class="travel-head"><span>'+escapeHtml(unitLabel(u))+'</span><button class="copy-mini" type="button">コピー</button></div><div class="travel-route">';
+      html += '<span class="home">'+HOME_STATION+'</span>';
+      let lastDate = null;
+      stops.forEach(function(s){
+        html += '<span class="arrow">→</span>';
+        if(u.type==="trip" && s.date!==lastDate){
+          html += '<span class="dmark">'+escapeHtml(fmtMD(s.date))+'</span>';
+        }
+        lastDate = s.date;
+        html += '<span class="st'+(s.fallback?' fallback':'')+'">'+escapeHtml(s.name)+'</span>';
+      });
+      html += '<span class="arrow">→</span><span class="home">'+HOME_STATION+'</span></div>';
+      row.innerHTML = html;
+      row.querySelector(".copy-mini").addEventListener("click", function(e){
+        const btn = e.target;
+        copyTextToClipboard(unitText(u), function(){
+          btn.textContent = "コピー済"; setTimeout(function(){ btn.textContent = "コピー"; }, 1500);
+        });
+      });
+      listEl.appendChild(row);
+    });
+  }
+  document.getElementById("travelMonth").addEventListener("change", renderTravel);
+  document.getElementById("travelSkipHq").addEventListener("change", renderTravel);
+  document.getElementById("travelCopyAll").addEventListener("click", function(){
+    const btn = document.getElementById("travelCopyAll");
+    const text = travelUnitsForMonth().map(unitText).join("\n");
+    copyTextToClipboard(text, function(){
+      const o = btn.textContent; btn.textContent = "コピーしました！";
+      setTimeout(function(){ btn.textContent = o; }, 1500);
+    });
+  });
+
   function renderAll(){
     renderPrefOptions();
     if(!editingId && !prefManuallySet) prefSel.value = getDefaultPref();
     renderFilterYearOptions();
+    renderStationList();
     renderList();
+    if(document.getElementById("tab-travel").classList.contains("active")) renderTravel();
     if(document.getElementById("tab-agg").classList.contains("active")) renderAggregation();
     if(document.getElementById("tab-map").classList.contains("active")) renderMap();
     if(document.getElementById("tab-report").classList.contains("active")) renderWeeklyReport();
