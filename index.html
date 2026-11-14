@@ -415,7 +415,8 @@
       </div>
       <div class="field">
         <label>拠点名</label>
-        <input type="text" id="f-place" placeholder="例）〇〇市役所 / △△浄水場">
+        <input type="text" id="f-place" list="placeList" placeholder="例）〇〇市役所 / △△浄水場（過去の拠点は候補から選択）">
+        <datalist id="placeList"></datalist>
       </div>
       <div class="row2">
         <div class="field">
@@ -1115,6 +1116,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     categorySel.value = CATEGORIES[0];
     document.getElementById("f-place").value = "";
     document.getElementById("f-station").value = "";
+    stationAutoFilled = false;
     nightsCtl.set(0);
     document.getElementById("f-purpose").value = "";
     document.getElementById("f-memo").value = "";
@@ -1135,6 +1137,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     categorySel.value = v.category || CATEGORIES[0];
     document.getElementById("f-place").value = v.place;
     document.getElementById("f-station").value = v.station||"";
+    stationAutoFilled = false;
     nightsCtl.set(v.nights||0);
     document.getElementById("f-purpose").value = v.purpose||"";
     document.getElementById("f-memo").value = v.memo||"";
@@ -1170,6 +1173,41 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     if(cur && (cur==="" || years.includes(cur))) filterYearSel.value = cur;
   }
 
+  // 同日の訪問順を入れ替える（画面上の▲=上へ、▼=下へ。1が一番下）
+  function sameDaySorted(date){
+    return Object.entries(visits).filter(function(e){ return e[1] && e[1].date===date; }).map(function(e){
+      return Object.assign({id:e[0]}, e[1]);
+    }).sort(function(a,b){
+      const ao = (a.order!=null) ? a.order : Infinity;
+      const bo = (b.order!=null) ? b.order : Infinity;
+      if(ao!==bo) return ao-bo;
+      return (a.createdAt||0)-(b.createdAt||0);
+    });
+  }
+  function moveVisitOrder(id, dir){
+    const v = visits[id];
+    if(!v) return;
+    const list = sameDaySorted(v.date); // 訪問順の昇順（先頭=1番目）
+    const idx = list.findIndex(function(x){ return x.id===id; });
+    const target = idx + (dir==="up" ? 1 : -1); // 画面上は降順表示のため、上=順番が大きい側
+    if(idx<0 || target<0 || target>=list.length) return;
+    const tmp = list[idx]; list[idx] = list[target]; list[target] = tmp;
+    const updates = {};
+    list.forEach(function(x, i){
+      const n = i+1;
+      if(x.order!==n){ updates[x.id] = Object.assign({}, visits[x.id], { order: n }); }
+    });
+    if(firebaseReady){
+      const dbUpdates = {};
+      Object.keys(updates).forEach(function(k){ dbUpdates["visitLog/visits/"+k+"/order"] = updates[k].order; });
+      db.ref().update(dbUpdates);
+    }else{
+      Object.assign(visits, updates);
+      saveLocal();
+      renderAll();
+    }
+  }
+
   function renderList(){
     const listEl = document.getElementById("visitList");
     const emptyEl = document.getElementById("listEmpty");
@@ -1197,6 +1235,10 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     emptyEl.style.display = arr.length===0 ? "block" : "none";
 
     arr.forEach(function(v){
+      const dayList = sameDaySorted(v.date);
+      const dayIdx = dayList.findIndex(function(x){ return x.id===v.id; });
+      const canUp = dayList.length>1 && dayIdx < dayList.length-1;
+      const canDown = dayList.length>1 && dayIdx > 0;
       const item = document.createElement("div");
       item.className = "visit-item";
       const imagesHtml = (v.images && v.images.length)
@@ -1215,6 +1257,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
         (v.memo ? '<div class="memo">'+linkifyMemo(v.memo)+'</div>' : '<div class="memo">（メモなし）</div>')+
         imagesHtml+
         '<div class="actions">'+
+          (canUp ? '<button class="btn secondary" data-act="up" title="同日内で上へ">▲</button>' : '')+
+          (canDown ? '<button class="btn secondary" data-act="down" title="同日内で下へ">▼</button>' : '')+
           '<button class="btn secondary" data-act="edit">編集</button>'+
           '<button class="btn secondary" data-act="copyday">当日の訪問履歴をコピー</button>'+
           '<button class="btn danger" data-act="del">削除</button>'+
@@ -1225,6 +1269,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
           openLightbox(e.target.src);
           return;
         }
+        if(e.target.dataset.act === "up" || e.target.dataset.act === "down"){ moveVisitOrder(v.id, e.target.dataset.act); return; }
         if(e.target.dataset.act === "edit"){ startEdit(v.id); return; }
         if(e.target.dataset.act === "del"){
           if(confirm("この記録を削除しますか？")) deleteVisit(v.id);
@@ -2149,7 +2194,41 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     const dayNo = Math.round((new Date(v.date+"T00:00:00")-new Date(trip.start+"T00:00:00"))/86400000)+1;
     return '<span class="tag-night cont">宿泊出張'+dayNo+'日目</span>';
   }
+  // 拠点名→最寄り駅の対応（拠点ごとに最新の駅入力を採用）
+  function buildPlaceStationMap(){
+    const map = {}, latest = {};
+    Object.values(visits).forEach(function(v){
+      if(!v || !v.place || !v.station) return;
+      const t = v.createdAt || 0;
+      if(latest[v.place]===undefined || t>=latest[v.place]){ latest[v.place]=t; map[v.place]=v.station; }
+    });
+    return map;
+  }
+  let placeStationMap = {};
+  let stationAutoFilled = false;
+  const placeInput = document.getElementById("f-place");
+  const stationInput = document.getElementById("f-station");
+  function autoFillStation(){
+    const st = placeStationMap[placeInput.value.trim()];
+    if(st && (!stationInput.value.trim() || stationAutoFilled)){
+      stationInput.value = st; stationAutoFilled = true;
+    }
+  }
+  placeInput.addEventListener("input", autoFillStation);
+  placeInput.addEventListener("change", autoFillStation);
+  stationInput.addEventListener("input", function(){ stationAutoFilled = false; });
+
   function renderStationList(){
+    placeStationMap = buildPlaceStationMap();
+    const pc = {};
+    Object.values(visits).forEach(function(v){ if(v && v.place) pc[v.place] = (pc[v.place]||0)+1; });
+    const pl = document.getElementById("placeList");
+    pl.innerHTML = "";
+    Object.keys(pc).sort(function(a,b){ return pc[b]-pc[a]; }).forEach(function(n){
+      const o = document.createElement("option"); o.value = n;
+      if(placeStationMap[n]) o.label = n+"（"+placeStationMap[n]+"）";
+      pl.appendChild(o);
+    });
     const counts = {};
     Object.values(visits).forEach(function(v){ if(v && v.station) counts[v.station] = (counts[v.station]||0)+1; });
     const dl = document.getElementById("stationList");
@@ -2221,10 +2300,11 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     const stops = [];
     unit.days.forEach(function(day){
       day.visits.forEach(function(v){
-        const name = v.station || v.place;
+        const st = v.station || placeStationMap[v.place] || "";
+        const name = st || v.place;
         const last = stops[stops.length-1];
         if(last && last.name===name && last.date===day.date) return;
-        stops.push({ name:name, fallback:!v.station, date:day.date });
+        stops.push({ name:name, fallback:!st, date:day.date });
       });
     });
     return stops;
