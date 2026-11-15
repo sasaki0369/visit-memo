@@ -228,9 +228,9 @@
     border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:#fff;
     cursor:pointer;
   }
-  .visit-item .top{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .visit-item .top{ display:flex; flex-wrap:wrap; justify-content:flex-start; align-items:center; gap:6px 8px; }
   .visit-item .date{ font-family:"DM Mono", monospace; font-weight:700; font-size:13px; color:var(--accent); white-space:nowrap; }
-  .visit-item .place{ font-weight:700; font-size:15px; flex:1; }
+  .visit-item .place{ font-weight:700; font-size:15px; flex:1 1 100%; min-width:0; order:5; word-break:break-word; }
   .visit-item .pref-tag{
     font-size:10.5px; color:var(--accent); background:var(--accent-bg);
     border-radius:20px; padding:2px 9px; white-space:nowrap;
