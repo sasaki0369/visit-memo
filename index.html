@@ -727,7 +727,37 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
   function genId(){ return "v" + Date.now() + Math.random().toString(36).slice(2,8); }
 
+  // 起動直後にFirebase接続前の状態で書き込むと端末内にだけ保存されてしまうため止める
+  function writeBlocked(){
+    if(firebaseConfigured && !firebaseReady){
+      alert("サーバーに接続中です。数秒おいてからもう一度お試しください。");
+      return true;
+    }
+    return false;
+  }
+  // 高速表示用キャッシュ（画像を除いた訪問データ）
+  const CACHE_KEY = "houmonroku_cache_v2";
+  function saveCache(){
+    try{
+      const slim = {};
+      Object.keys(visits).forEach(function(id){
+        const v = Object.assign({}, visits[id]);
+        if(v.images && v.images.length) v.imageCount = v.images.length;
+        delete v.images;
+        slim[id] = v;
+      });
+      safeStorage.setItem(CACHE_KEY, JSON.stringify(slim));
+    }catch(e){}
+  }
+  function loadCache(){
+    try{
+      const c = JSON.parse(safeStorage.getItem(CACHE_KEY) || "null");
+      if(c && typeof c==="object"){ visits = c; return Object.keys(c).length>0; }
+    }catch(e){}
+    return false;
+  }
   function upsertVisit(id, data){
+    if(writeBlocked()) return;
     if(firebaseReady){
       db.ref("visitLog/visits/"+id).set(data);
     }else{
@@ -737,6 +767,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     }
   }
   function deleteVisit(id){
+    if(writeBlocked()) return;
     if(firebaseReady){
       db.ref("visitLog/visits/"+id).remove();
     }else{
@@ -783,6 +814,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   function attachFirebaseListeners(){
     db.ref("visitLog/visits").on("value", function(snap){
       visits = snap.val() || {};
+      saveCache();
       renderAll();
     });
     db.ref("visitLog/settings/reportConfig").on("value", function(snap){
@@ -800,6 +832,8 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
 
   function startDataLoading(){
     if(firebaseConfigured){
+      // 前回のデータを先に表示（Firebaseの読み込み完了後に最新へ置き換わる）
+      if(loadCache()) renderAll();
       const ALLOWED_EMAIL = 'sasaki0369@gmail.com';
       firebase.auth().onAuthStateChanged(function(user){
         if(user && user.email !== ALLOWED_EMAIL){
@@ -1192,6 +1226,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
   function moveVisitOrder(id, dir){
     const v = visits[id];
     if(!v) return;
+    if(writeBlocked()) return;
     const list = sameDaySorted(v.date); // 訪問順の昇順（先頭=1番目）
     const idx = list.findIndex(function(x){ return x.id===id; });
     const target = idx + (dir==="up" ? 1 : -1); // 画面上は降順表示のため、上=順番が大きい側
