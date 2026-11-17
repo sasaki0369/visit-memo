@@ -839,7 +839,13 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
       // 前回のデータを先に表示（Firebaseの読み込み完了後に最新へ置き換わる）
       if(loadCache()) renderAll();
       const ALLOWED_EMAIL = 'sasaki0369@gmail.com';
+      // ログイン状態を端末に長期保持（取得に失敗してもログイン処理は止めない）
+      try{
+        firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function(e){ console.warn(e); });
+      }catch(e){}
+      let gateTimer = null;
       firebase.auth().onAuthStateChanged(function(user){
+        if(gateTimer){ clearTimeout(gateTimer); gateTimer = null; }
         if(user && user.email !== ALLOWED_EMAIL){
           firebase.auth().signOut();
           document.getElementById('loginError').textContent = 'このアプリは指定されたアカウントのみ利用できます。';
@@ -853,7 +859,10 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
           }
         }else{
           firebaseReady = false;
-          document.getElementById('loginGate').style.display = 'flex';
+          // 起動直後の一時的な未ログイン通知でログイン画面を出さないよう、少し待ってから表示する
+          gateTimer = setTimeout(function(){
+            if(!firebaseReady) document.getElementById('loginGate').style.display = 'flex';
+          }, 2500);
         }
       });
       firebase.auth().getRedirectResult().catch(function(err){
