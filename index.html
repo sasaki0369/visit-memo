@@ -237,6 +237,12 @@
   }
   .visit-item.future{ background:#F2F7F8; border:1.5px dashed var(--accent); }
   .tag-future{ font-size:11px; font-weight:700; color:#fff; background:var(--accent); border-radius:20px; padding:2px 9px; white-space:nowrap; }
+  .visit-item.today{ background:#FFF8E6; border:2px solid var(--gold); }
+  .tag-today{ font-size:11px; font-weight:700; color:#fff; background:var(--gold); border-radius:20px; padding:2px 9px; white-space:nowrap; }
+  .sec-head{ font-size:12.5px; font-weight:700; padding:6px 10px; border-radius:8px; margin:6px 0 0; }
+  .sec-head.sec-future{ background:var(--accent-bg); color:var(--accent-deep); }
+  .sec-head.sec-today{ background:var(--gold); color:#fff; }
+  .sec-head.sec-past{ background:var(--paper-deep); color:var(--ink-soft); }
   .today-divider{ display:flex; align-items:center; gap:8px; margin:4px 0; font-size:12px; font-weight:700; color:var(--gold); }
   .today-divider::before, .today-divider::after{ content:""; flex:1; border-top:2px solid var(--gold); }
   .visit-item .purpose{ font-size:12.5px; color:var(--ink-soft); margin-top:4px; }
@@ -1303,23 +1309,31 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
     emptyEl.style.display = arr.length===0 ? "block" : "none";
 
     const todayS = todayStr();
-    const hasFuture = arr.some(function(v){ return v.date>todayS; });
-    let dividerDone = !hasFuture;
+    // 明日以降 → 今日 → 昨日以前 の3区分で見出しを入れる
+    const SEC_RANK = { future:0, today:1, past:2 };
+    let emitted = { future:false, today:false, past:false };
+    function addSecHeader(sec, empty){
+      emitted[sec] = true;
+      const h = document.createElement("div");
+      h.className = "sec-head sec-"+sec;
+      h.textContent = sec==="future" ? "▲ 明日以降（予定）" :
+                      sec==="today" ? "★ 今日 "+fmtMD(todayS)+(empty ? "　記録なし" : "") :
+                      "▼ 昨日以前（実績）";
+      listEl.appendChild(h);
+    }
     arr.forEach(function(v){
-      if(!dividerDone && v.date<=todayS){
-        const dv = document.createElement("div");
-        dv.className = "today-divider";
-        dv.textContent = "今日 "+fmtMD(todayS)+"　↑予定　↓実績";
-        listEl.appendChild(dv);
-        dividerDone = true;
-      }
-      const isFuture = v.date>todayS;
+      const sec = v.date>todayS ? "future" : (v.date===todayS ? "today" : "past");
+      // 今日の記録がなくても「今日」の位置が分かるよう、未来と過去の間に見出しを出す
+      if(sec==="past" && !emitted.today) addSecHeader("today", true);
+      if(!emitted[sec]) addSecHeader(sec, false);
+      const isFuture = sec==="future";
+      const isToday = sec==="today";
       const dayList = sameDaySorted(v.date);
       const dayIdx = dayList.findIndex(function(x){ return x.id===v.id; });
       const canUp = dayList.length>1 && dayIdx < dayList.length-1;
       const canDown = dayList.length>1 && dayIdx > 0;
       const item = document.createElement("div");
-      item.className = "visit-item"+(isFuture ? " future" : "");
+      item.className = "visit-item"+(isFuture ? " future" : "")+(isToday ? " today" : "");
       const imagesHtml = (v.images && v.images.length)
         ? '<div class="record-images">'+v.images.map(function(src){ return '<img src="'+escapeHtml(src)+'">'; }).join("")+'</div>'
         : '';
@@ -1327,6 +1341,7 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
         '<div class="top">'+
           '<span class="date">'+escapeHtml(v.date||"")+'</span>'+
           (isFuture ? '<span class="tag-future">予定</span>' : '')+
+          (isToday ? '<span class="tag-today">今日</span>' : '')+
           '<span class="place">'+escapeHtml(v.place||"")+'</span>'+
           (v.category ? '<span class="cat-tag">'+escapeHtml(v.category)+'</span>' : '')+
           '<span class="pref-tag">'+escapeHtml(v.pref||"")+'</span>'+
