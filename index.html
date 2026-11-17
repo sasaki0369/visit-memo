@@ -873,10 +873,25 @@ const MAP_DATA = {"viewBox":[0,0,760,881.8],"paths":{"京都府":"M402.0,410.1L3
         const provider = new firebase.auth.GoogleAuthProvider();
         document.getElementById('loginError').textContent = '';
         document.getElementById('googleLoginBtn').textContent = 'ログイン画面へ移動しています…';
-        firebase.auth().signInWithRedirect(provider).catch(function(err){
+        const btn = document.getElementById('googleLoginBtn');
+        function fail(err){
           console.error(err);
           document.getElementById('loginError').textContent = 'ログインに失敗しました（'+(err && err.code ? err.code : err)+'）';
-          document.getElementById('googleLoginBtn').textContent = 'Googleでログイン';
+          btn.textContent = 'Googleでログイン';
+        }
+        // 別ドメインへの保存が制限されるブラウザでもログインできるよう、まずポップアップ方式を使う
+        btn.textContent = 'ログイン中…';
+        firebase.auth().signInWithPopup(provider).catch(function(err){
+          const code = err && err.code;
+          if(code==='auth/popup-blocked' || code==='auth/operation-not-supported-in-this-environment' || code==='auth/cancelled-popup-request'){
+            btn.textContent = 'ログイン画面へ移動しています…';
+            firebase.auth().signInWithRedirect(provider).catch(fail);
+          }else if(code==='auth/popup-closed-by-user'){
+            btn.textContent = 'Googleでログイン';
+            document.getElementById('loginError').textContent = 'ログイン画面が閉じられました。もう一度お試しください。';
+          }else{
+            fail(err);
+          }
         });
       });
     }else{
